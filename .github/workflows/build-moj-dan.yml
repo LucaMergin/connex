@@ -2,7 +2,7 @@ name: Build Moj dan APK
 
 on:
   push:
-    branches: ["moj-dan-android"]
+    branches: ["master"]
     paths:
       - "moj-dan-android/**"
       - ".github/workflows/build-moj-dan.yml"
