@@ -19,7 +19,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -39,9 +38,13 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        loadTasks();
-        setContentView(buildUi());
-        renderTasks();
+        try {
+            loadTasks();
+            setContentView(buildUi());
+            renderTasks();
+        } catch (Throwable error) {
+            showStartupError(error);
+        }
     }
 
     private View buildUi() {
@@ -56,10 +59,10 @@ public class MainActivity extends Activity {
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT));
 
-        TextView title = text("Moj dan", 30, Typeface.BOLD, Color.rgb(23, 78, 166));
+        TextView title = makeText("Moj dan", 30, Typeface.BOLD, Color.rgb(23, 78, 166));
         root.addView(title);
 
-        TextView subtitle = text("Majhni koraki. Dober dan.", 16, Typeface.NORMAL, Color.DKGRAY);
+        TextView subtitle = makeText("Majhni koraki. Dober dan.", 16, Typeface.NORMAL, Color.DKGRAY);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -74,7 +77,7 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        progressText = text("", 16, Typeface.BOLD, Color.rgb(35, 35, 35));
+        progressText = makeText("Dan je pripravljen", 16, Typeface.BOLD, Color.rgb(35, 35, 35));
         card.addView(progressText);
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -98,25 +101,25 @@ public class MainActivity extends Activity {
         addButton.setText("Dodaj");
         addButton.setAllCaps(false);
         addButton.setTextSize(16);
-        addButton.setOnClickListener(v -> addTask());
+        addButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                addTask();
+            }
+        });
         LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(dp(92), dp(52));
         addParams.setMargins(dp(10), 0, 0, 0);
         inputRow.addView(addButton, addParams);
         card.addView(inputRow);
 
-        taskInput.setOnEditorActionListener((v, actionId, event) -> {
-            addTask();
-            return true;
-        });
-
-        TextView sectionTitle = text("Današnja opravila", 20, Typeface.BOLD, Color.rgb(35, 35, 35));
+        TextView sectionTitle = makeText("Današnja opravila", 20, Typeface.BOLD, Color.rgb(35, 35, 35));
         LinearLayout.LayoutParams sectionParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         sectionParams.setMargins(0, dp(24), 0, dp(10));
         root.addView(sectionTitle, sectionParams);
 
-        emptyText = text("Seznam je prazen. Dodaj prvo opravilo.", 16, Typeface.NORMAL, Color.GRAY);
+        emptyText = makeText("Seznam je prazen. Dodaj prvo opravilo.", 16, Typeface.NORMAL, Color.GRAY);
         emptyText.setGravity(Gravity.CENTER);
         emptyText.setPadding(dp(8), dp(28), dp(8), dp(28));
         root.addView(emptyText);
@@ -130,10 +133,17 @@ public class MainActivity extends Activity {
         Button clearDone = new Button(this);
         clearDone.setText("Odstrani končana opravila");
         clearDone.setAllCaps(false);
-        clearDone.setOnClickListener(v -> {
-            tasks.removeIf(task -> task.done);
-            saveTasks();
-            renderTasks();
+        clearDone.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                for (int i = tasks.size() - 1; i >= 0; i--) {
+                    if (tasks.get(i).done) {
+                        tasks.remove(i);
+                    }
+                }
+                saveTasks();
+                renderTasks();
+            }
         });
         LinearLayout.LayoutParams clearParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
@@ -144,17 +154,21 @@ public class MainActivity extends Activity {
     }
 
     private void addTask() {
-        String text = taskInput.getText().toString().trim();
-        if (text.isEmpty()) {
+        String value = taskInput.getText().toString().trim();
+        if (value.length() == 0) {
             Toast.makeText(this, "Najprej vpiši opravilo.", Toast.LENGTH_SHORT).show();
             return;
         }
-        tasks.add(new Task(text, false));
+
+        tasks.add(new Task(value, false));
         taskInput.setText("");
         saveTasks();
         renderTasks();
-        ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
-                .hideSoftInputFromWindow(taskInput.getWindowToken(), 0);
+
+        InputMethodManager manager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (manager != null) {
+            manager.hideSoftInputFromWindow(taskInput.getWindowToken(), 0);
+        }
     }
 
     private void renderTasks() {
@@ -163,9 +177,11 @@ public class MainActivity extends Activity {
 
         int completed = 0;
         for (int i = 0; i < tasks.size(); i++) {
+            final int index = i;
             Task task = tasks.get(i);
-            if (task.done) completed++;
-            int index = i;
+            if (task.done) {
+                completed++;
+            }
 
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
@@ -176,27 +192,34 @@ public class MainActivity extends Activity {
             CheckBox checkBox = new CheckBox(this);
             checkBox.setChecked(task.done);
             checkBox.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                tasks.get(index).done = isChecked;
-                saveTasks();
-                renderTasks();
+                if (index < tasks.size()) {
+                    tasks.get(index).done = isChecked;
+                    saveTasks();
+                    renderTasks();
+                }
             });
             row.addView(checkBox);
 
-            TextView taskText = text(task.text, 17, Typeface.NORMAL,
+            TextView taskText = makeText(task.text, 17, Typeface.NORMAL,
                     task.done ? Color.GRAY : Color.rgb(30, 30, 30));
             if (task.done) {
                 taskText.setPaintFlags(taskText.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
             }
-            row.addView(taskText, new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(taskText, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
             Button delete = new Button(this);
             delete.setText("×");
             delete.setTextSize(20);
-            delete.setOnClickListener(v -> {
-                tasks.remove(index);
-                saveTasks();
-                renderTasks();
+            delete.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    if (index < tasks.size()) {
+                        tasks.remove(index);
+                        saveTasks();
+                        renderTasks();
+                    }
+                }
             });
             row.addView(delete, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
@@ -209,12 +232,14 @@ public class MainActivity extends Activity {
 
         int percent = tasks.isEmpty() ? 0 : Math.round(completed * 100f / tasks.size());
         progressBar.setProgress(percent);
-        progressText.setText(tasks.isEmpty()
-                ? "Dan je pripravljen"
-                : completed + " od " + tasks.size() + " opravljenih · " + percent + " %");
+        if (tasks.isEmpty()) {
+            progressText.setText("Dan je pripravljen");
+        } else {
+            progressText.setText(completed + " od " + tasks.size() + " opravljenih · " + percent + " %");
+        }
     }
 
-    private TextView text(String value, int size, int style, int color) {
+    private TextView makeText(String value, int size, int style, int color) {
         TextView view = new TextView(this);
         view.setText(value);
         view.setTextSize(size);
@@ -228,33 +253,60 @@ public class MainActivity extends Activity {
     }
 
     private void saveTasks() {
-        JSONArray array = new JSONArray();
-        for (Task task : tasks) {
-            JSONObject object = new JSONObject();
-            try {
+        try {
+            JSONArray array = new JSONArray();
+            for (Task task : tasks) {
+                JSONObject object = new JSONObject();
                 object.put("text", task.text);
                 object.put("done", task.done);
                 array.put(object);
-            } catch (JSONException ignored) {
             }
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit()
+                    .putString(KEY_TASKS, array.toString())
+                    .apply();
+        } catch (Throwable ignored) {
         }
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                .putString(KEY_TASKS, array.toString())
-                .apply();
     }
 
     private void loadTasks() {
-        SharedPreferences preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String saved = preferences.getString(KEY_TASKS, "[]");
+        tasks.clear();
         try {
-            JSONArray array = new JSONArray(saved);
+            SharedPreferences preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
+            String saved = preferences.getString(KEY_TASKS, "[]");
+            JSONArray array = new JSONArray(saved == null ? "[]" : saved);
             for (int i = 0; i < array.length(); i++) {
                 JSONObject object = array.getJSONObject(i);
-                tasks.add(new Task(object.optString("text", "Opravilo"), object.optBoolean("done", false)));
+                tasks.add(new Task(
+                        object.optString("text", "Opravilo"),
+                        object.optBoolean("done", false)));
             }
-        } catch (JSONException ignored) {
+        } catch (Throwable ignored) {
             tasks.clear();
         }
+    }
+
+    private void showStartupError(Throwable error) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(24), dp(32), dp(24), dp(24));
+        root.setGravity(Gravity.CENTER);
+
+        TextView title = makeText("Moj dan", 28, Typeface.BOLD, Color.rgb(23, 78, 166));
+        title.setGravity(Gravity.CENTER);
+        root.addView(title);
+
+        TextView message = makeText(
+                "Aplikacija se je odprla, vendar je pri pripravi zaslona prišlo do napake.\n\n" +
+                        error.getClass().getSimpleName(),
+                16,
+                Typeface.NORMAL,
+                Color.DKGRAY);
+        message.setGravity(Gravity.CENTER);
+        message.setPadding(0, dp(20), 0, 0);
+        root.addView(message);
+
+        setContentView(root);
     }
 
     private static class Task {
