@@ -6,6 +6,11 @@ on:
     paths:
       - "moj-dan-android/**"
       - ".github/workflows/build-moj-dan.yml"
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "moj-dan-android/**"
+      - ".github/workflows/build-moj-dan.yml"
   workflow_dispatch:
 
 jobs:
