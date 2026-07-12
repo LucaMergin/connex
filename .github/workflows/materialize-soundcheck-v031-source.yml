@@ -1,0 +1,53 @@
+name: Materialize SoundCheck v0.3.1 Source
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - ".github/workflows/materialize-soundcheck-v031-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: soundcheck-v0.3.1-calm
+
+      - name: Reconstruct verified source
+        shell: bash
+        run: |
+          cat \
+            soundcheck-v031/chunk00.txt \
+            soundcheck-v031/chunk01.txt \
+            soundcheck-v031/chunk02a.txt \
+            soundcheck-v031/chunk02b.txt \
+            soundcheck-v031/chunk02c.txt \
+            soundcheck-v031/chunk03a.txt \
+            soundcheck-v031/chunk03b.txt \
+            soundcheck-v031/chunk03c1.txt \
+            soundcheck-v031/chunk03c2.txt \
+            soundcheck-v031/chunk03c3.txt \
+            > /tmp/source.b64
+          base64 --decode /tmp/source.b64 > /tmp/source.zip
+          echo "da6dab00986fea8fbffe205677fe59e7ffd415b4fb8985ee20ac5e4db57e87d0  /tmp/source.zip" | sha256sum --check
+          rm -rf /tmp/v031
+          mkdir -p /tmp/v031
+          unzip -q /tmp/source.zip -d /tmp/v031
+          mkdir -p soundcheck-v031-materialized
+          cp /tmp/v031/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java soundcheck-v031-materialized/MainActivity.java
+          cp /tmp/v031/SoundCheckAssistant/app/build.gradle soundcheck-v031-materialized/app-build.gradle
+
+      - name: Commit materialized files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add soundcheck-v031-materialized/MainActivity.java soundcheck-v031-materialized/app-build.gradle
+          git diff --cached --quiet || git commit -m "Materializiraj izvor SoundCheck v0.3.1"
+          git push origin HEAD:soundcheck-v0.3.1-calm

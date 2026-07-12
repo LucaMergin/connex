@@ -1,0 +1,79 @@
+name: Build and Publish SoundCheck Assistant v0.2 FIX APK
+
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || 'soundcheck-v0.2-build' }}
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Sestavi projekt iz delov
+        shell: bash
+        run: |
+          cat soundcheck-v02-parts/part*.txt > /tmp/soundcheck-v02.b64
+          base64 --decode /tmp/soundcheck-v02.b64 > /tmp/soundcheck-v02.zip
+          unzip -q /tmp/soundcheck-v02.zip -d "$GITHUB_WORKSPACE/generated"
+          sed -i "s/applicationId 'si.ell.soundcheck'/applicationId 'si.ell.soundcheck.v02fix'/" generated/SoundCheckAssistant/app/build.gradle
+          sed -i "s/versionCode 2/versionCode 1/" generated/SoundCheckAssistant/app/build.gradle
+          sed -i "s/versionName '0.2.0'/versionName '0.2.1-fix'/" generated/SoundCheckAssistant/app/build.gradle
+
+      - name: Izdelaj APK
+        working-directory: generated/SoundCheckAssistant
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Preveri APK
+        shell: bash
+        run: |
+          APK="generated/SoundCheckAssistant/app/build/outputs/apk/release/app-release.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apk-verification.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-package.txt
+          grep "package: name='si.ell.soundcheck.v02fix'" apk-package.txt
+          cp "$APK" SoundCheck-Assistant-v0.2-FIX.apk
+          sha256sum SoundCheck-Assistant-v0.2-FIX.apk | tee apk-sha256.txt
+
+      - name: Shrani artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundCheck-Assistant-v0.2-FIX
+          path: |
+            SoundCheck-Assistant-v0.2-FIX.apk
+            apk-verification.txt
+            apk-package.txt
+            apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Objavi APK v javni mapi
+        shell: bash
+        run: |
+          mkdir -p downloads
+          cp SoundCheck-Assistant-v0.2-FIX.apk downloads/SoundCheck-Assistant-v0.2-FIX.apk
+          cp apk-sha256.txt downloads/SoundCheck-Assistant-v0.2-FIX.sha256
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/SoundCheck-Assistant-v0.2-FIX.apk downloads/SoundCheck-Assistant-v0.2-FIX.sha256
+          git diff --cached --quiet || git commit -m "Objavi SoundCheck Assistant v0.2 FIX APK"
+          git push origin HEAD:soundcheck-v0.2-build
