@@ -30,9 +30,15 @@ jobs:
         shell: bash
         run: |
           cat \
-            soundcheck-v032/chunk00.txt \
-            soundcheck-v032/chunk01.txt \
-            soundcheck-v032/chunk02.txt \
+            soundcheck-v032/fix00.txt \
+            soundcheck-v032/fix01.txt \
+            soundcheck-v032/fix02.txt \
+            soundcheck-v032/fix03.txt \
+            soundcheck-v032/fix04.txt \
+            soundcheck-v032/fix05.txt \
+            soundcheck-v032/fix06.txt \
+            soundcheck-v032/fix07.txt \
+            soundcheck-v032/fix08.txt \
             soundcheck-v032/chunk03.txt \
             soundcheck-v032/chunk04.txt \
             > /tmp/SoundCheckAssistant-v0.3.2-source.b64
