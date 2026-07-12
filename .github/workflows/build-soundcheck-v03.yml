@@ -38,7 +38,7 @@ jobs:
         working-directory: generated/SoundCheckAssistant
         run: gradle :app:assembleRelease --stacktrace
 
-      - name: Preveri paket in različico
+      - name: Preveri paket in pripravi podpisna orodja
         shell: bash
         run: |
           APK="generated/SoundCheckAssistant/app/build/outputs/apk/release/app-release-unsigned.apk"
@@ -47,14 +47,20 @@ jobs:
           grep "package: name='si.ell.soundcheck.v02fix' versionCode='3' versionName='0.3.0'" apk-package.txt
           cp "$APK" SoundCheck-Assistant-v0.3-unsigned.apk
           sha256sum SoundCheck-Assistant-v0.3-unsigned.apk | tee apk-sha256.txt
+          mkdir -p signing-tools/lib
+          cp "$BUILD_TOOLS/apksigner" signing-tools/apksigner
+          cp "$BUILD_TOOLS/lib/apksigner.jar" signing-tools/lib/apksigner.jar
+          cp "$BUILD_TOOLS/zipalign" signing-tools/zipalign
+          chmod +x signing-tools/apksigner signing-tools/zipalign
 
-      - name: Shrani APK za podpis
+      - name: Shrani APK in podpisna orodja
         uses: actions/upload-artifact@v4
         with:
-          name: SoundCheck-Assistant-v0.3-unsigned
+          name: SoundCheck-Assistant-v0.3-signing-kit
           path: |
             SoundCheck-Assistant-v0.3-unsigned.apk
             apk-package.txt
             apk-sha256.txt
+            signing-tools/
           if-no-files-found: error
           retention-days: 30
