@@ -1,0 +1,1 @@
+All 11 direct APK chunks are present. Trigger final reconstruction, signature verification and publication.
