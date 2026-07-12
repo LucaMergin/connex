@@ -23,7 +23,8 @@ jobs:
       - name: Reconstruct signed APK
         shell: bash
         run: |
-          cat soundcheck-v03-direct/chunk*.txt > /tmp/SoundCheck-Assistant-v0.3.apk.b64
+          cat soundcheck-v03-direct/chunk*.txt | tr -d '\r\n\t ' > /tmp/SoundCheck-Assistant-v0.3.apk.b64
+          echo "Base64 length: $(wc -c < /tmp/SoundCheck-Assistant-v0.3.apk.b64)"
           test "$(wc -c < /tmp/SoundCheck-Assistant-v0.3.apk.b64)" -eq 50016
           base64 --decode /tmp/SoundCheck-Assistant-v0.3.apk.b64 > SoundCheck-Assistant-v0.3.apk
           echo "e6dc3660a19e1ce77ef528aa4dcbc012e9bcca58ca4615fd923d73a44e8e61da  SoundCheck-Assistant-v0.3.apk" | sha256sum --check
