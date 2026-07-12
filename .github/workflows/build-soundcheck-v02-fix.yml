@@ -1,19 +1,22 @@
-name: Build SoundCheck Assistant v0.2 FIX APK
+name: Build and Publish SoundCheck Assistant v0.2 FIX APK
 
 on:
   pull_request:
     branches: ["master"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
 
     steps:
-      - name: Checkout
+      - name: Checkout PR branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || 'soundcheck-v0.2-build' }}
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -51,7 +54,7 @@ jobs:
           cp "$APK" SoundCheck-Assistant-v0.2-FIX.apk
           sha256sum SoundCheck-Assistant-v0.2-FIX.apk | tee apk-sha256.txt
 
-      - name: Shrani APK
+      - name: Shrani artifact
         uses: actions/upload-artifact@v4
         with:
           name: SoundCheck-Assistant-v0.2-FIX
@@ -62,3 +65,15 @@ jobs:
             apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Objavi APK v javni mapi
+        shell: bash
+        run: |
+          mkdir -p downloads
+          cp SoundCheck-Assistant-v0.2-FIX.apk downloads/SoundCheck-Assistant-v0.2-FIX.apk
+          cp apk-sha256.txt downloads/SoundCheck-Assistant-v0.2-FIX.sha256
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/SoundCheck-Assistant-v0.2-FIX.apk downloads/SoundCheck-Assistant-v0.2-FIX.sha256
+          git diff --cached --quiet || git commit -m "Objavi SoundCheck Assistant v0.2 FIX APK"
+          git push origin HEAD:soundcheck-v0.2-build
