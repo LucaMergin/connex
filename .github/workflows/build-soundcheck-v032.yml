@@ -1,0 +1,85 @@
+name: Build SoundCheck Assistant v0.3.2
+
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Reconstruct v0.3.1 source
+        shell: bash
+        run: |
+          cat \
+            soundcheck-v031/chunk00.txt \
+            soundcheck-v031/chunk01.txt \
+            soundcheck-v031/chunk02a.txt \
+            soundcheck-v031/chunk02b.txt \
+            soundcheck-v031/chunk02c.txt \
+            soundcheck-v031/chunk03a.txt \
+            soundcheck-v031/chunk03b.txt \
+            soundcheck-v031/chunk03c1.txt \
+            soundcheck-v031/chunk03c2.txt \
+            soundcheck-v031/chunk03c3.txt \
+            > /tmp/source.b64
+          test "$(wc -c < /tmp/source.b64)" -eq 34856
+          base64 --decode /tmp/source.b64 > /tmp/source.zip
+          echo "da6dab00986fea8fbffe205677fe59e7ffd415b4fb8985ee20ac5e4db57e87d0  /tmp/source.zip" | sha256sum --check
+          rm -rf generated
+          mkdir -p generated
+          unzip -q /tmp/source.zip -d generated
+
+      - name: Apply v0.3.2 live graph patch
+        shell: bash
+        run: |
+          python3 soundcheck-v032/apply_patch.py generated/SoundCheckAssistant
+          grep "versionCode 5" generated/SoundCheckAssistant/app/build.gradle
+          grep 'versionName "0.3.2"' generated/SoundCheckAssistant/app/build.gradle
+          grep "setLiveSpectrum" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+          grep "drawLiveGraph" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+
+      - name: Build release APK
+        working-directory: generated/SoundCheckAssistant
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify package and version
+        shell: bash
+        run: |
+          APK="generated/SoundCheckAssistant/app/build/outputs/apk/release/app-release-unsigned.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-package.txt
+          grep "package: name='si.ell.soundcheck.v02fix' versionCode='5' versionName='0.3.2'" apk-package.txt
+          cp "$APK" SoundCheck-Assistant-v0.3.2-unsigned.apk
+          sha256sum SoundCheck-Assistant-v0.3.2-unsigned.apk > apk-sha256.txt
+
+      - name: Upload unsigned APK and patched source
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundCheck-Assistant-v0.3.2-build
+          path: |
+            SoundCheck-Assistant-v0.3.2-unsigned.apk
+            apk-package.txt
+            apk-sha256.txt
+            generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+            generated/SoundCheckAssistant/app/build.gradle
+          if-no-files-found: error
+          retention-days: 30
