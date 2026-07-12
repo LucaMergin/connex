@@ -1,0 +1,58 @@
+name: Verify SoundCheck APK
+
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Extract embedded project
+        shell: bash
+        run: |
+          sed -n '/^[[:space:]]*UEsDB/,/^[[:space:]]*B64$/p' .github/workflows/build-soundcheck.yml | head -n -1 | tr -d ' ' > /tmp/soundcheck.b64
+          base64 --decode /tmp/soundcheck.b64 > /tmp/soundcheck.zip
+          unzip -q /tmp/soundcheck.zip -d "$GITHUB_WORKSPACE/generated"
+
+      - name: Build signed APK
+        working-directory: generated/SoundCheckAssistant
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          APK="generated/SoundCheckAssistant/app/build/outputs/apk/release/app-release.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apk-verification.txt
+          cp "$APK" SoundCheck-Assistant-v0.1.apk
+          sha256sum SoundCheck-Assistant-v0.1.apk | tee apk-sha256.txt
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundCheck-Assistant-v0.1-verified
+          path: |
+            SoundCheck-Assistant-v0.1.apk
+            apk-verification.txt
+            apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
