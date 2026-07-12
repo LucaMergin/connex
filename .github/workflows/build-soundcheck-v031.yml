@@ -29,7 +29,9 @@ jobs:
       - name: Reconstruct source
         shell: bash
         run: |
-          base64 --decode soundcheck-v031/source.zip.b64 > /tmp/SoundCheckAssistant-v0.3.1-source.zip
+          cat soundcheck-v031/chunk*.txt > /tmp/SoundCheckAssistant-v0.3.1-source.b64
+          test "$(wc -c < /tmp/SoundCheckAssistant-v0.3.1-source.b64)" -eq 34856
+          base64 --decode /tmp/SoundCheckAssistant-v0.3.1-source.b64 > /tmp/SoundCheckAssistant-v0.3.1-source.zip
           echo "da6dab00986fea8fbffe205677fe59e7ffd415b4fb8985ee20ac5e4db57e87d0  /tmp/SoundCheckAssistant-v0.3.1-source.zip" | sha256sum --check
           unzip -q /tmp/SoundCheckAssistant-v0.3.1-source.zip -d generated
           test -f generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
