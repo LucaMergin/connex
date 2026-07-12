@@ -29,7 +29,18 @@ jobs:
       - name: Reconstruct source
         shell: bash
         run: |
-          cat soundcheck-v031/chunk*.txt > /tmp/SoundCheckAssistant-v0.3.1-source.b64
+          cat \
+            soundcheck-v031/chunk00.txt \
+            soundcheck-v031/chunk01.txt \
+            soundcheck-v031/chunk02a.txt \
+            soundcheck-v031/chunk02b.txt \
+            soundcheck-v031/chunk02c.txt \
+            soundcheck-v031/chunk03a.txt \
+            soundcheck-v031/chunk03b.txt \
+            soundcheck-v031/chunk03c1.txt \
+            soundcheck-v031/chunk03c2.txt \
+            soundcheck-v031/chunk03c3.txt \
+            > /tmp/SoundCheckAssistant-v0.3.1-source.b64
           test "$(wc -c < /tmp/SoundCheckAssistant-v0.3.1-source.b64)" -eq 34856
           base64 --decode /tmp/SoundCheckAssistant-v0.3.1-source.b64 > /tmp/SoundCheckAssistant-v0.3.1-source.zip
           echo "da6dab00986fea8fbffe205677fe59e7ffd415b4fb8985ee20ac5e4db57e87d0  /tmp/SoundCheckAssistant-v0.3.1-source.zip" | sha256sum --check
