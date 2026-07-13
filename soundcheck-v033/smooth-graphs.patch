@@ -1,0 +1,212 @@
+--- a/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
++++ b/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+@@ -10,6 +10,7 @@
+ import android.graphics.Canvas;
+ import android.graphics.Color;
+ import android.graphics.Paint;
++import android.graphics.Path;
+ import android.graphics.RectF;
+ import android.graphics.Typeface;
+ import android.graphics.drawable.GradientDrawable;
+@@ -1669,10 +1670,14 @@
+         private final Paint peakPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+         private final Paint dangerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
++        private final Path scorePath = new Path();
++        private final Path peakPath = new Path();
+         private final List<Float> scores = new ArrayList<>();
+         private final List<Float> peaks = new ArrayList<>();
+         private final List<Boolean> dangers = new ArrayList<>();
+         private static final int MAX_POINTS = 60;
++        private float animatedLastScore = 0f;
++        private float animatedLastPeak = 0f;
+ 
+         TrendView(Context context) {
+             super(context);
+@@ -1692,17 +1697,50 @@
+         }
+ 
+         void clear() {
+-            scores.clear(); peaks.clear(); dangers.clear(); invalidate();
++            scores.clear(); peaks.clear(); dangers.clear();
++            animatedLastScore = 0f;
++            animatedLastPeak = 0f;
++            invalidate();
+         }
+ 
+         void addPoint(int score, double peakDb, boolean danger) {
++            float newPeak = (float) Math.max(0, Math.min(100, (peakDb + 60.0) * 100.0 / 60.0));
+             if (scores.size() >= MAX_POINTS) {
+                 scores.remove(0); peaks.remove(0); dangers.remove(0);
+             }
++            if (scores.isEmpty()) {
++                animatedLastScore = score;
++                animatedLastPeak = newPeak;
++            } else {
++                animatedLastScore = scores.get(scores.size() - 1);
++                animatedLastPeak = peaks.get(peaks.size() - 1);
++            }
+             scores.add((float) score);
+-            peaks.add((float) Math.max(0, Math.min(100, (peakDb + 60.0) * 100.0 / 60.0)));
++            peaks.add(newPeak);
+             dangers.add(danger);
+-            invalidate();
++            postInvalidateOnAnimation();
++        }
++
++        private void buildSmoothPath(Path path, List<Float> values, float animatedLast,
++                                     float left, float bottom, float step, float offset,
++                                     float height) {
++            path.reset();
++            if (values.isEmpty()) return;
++            int count = values.size();
++            float firstValue = count == 1 ? animatedLast : values.get(0);
++            float firstX = left + offset;
++            float firstY = bottom - firstValue / 100f * height;
++            path.moveTo(firstX, firstY);
++            for (int i = 1; i < count; i++) {
++                float previousValue = i - 1 == count - 1 ? animatedLast : values.get(i - 1);
++                float currentValue = i == count - 1 ? animatedLast : values.get(i);
++                float x1 = left + offset + (i - 1) * step;
++                float x2 = left + offset + i * step;
++                float y1 = bottom - previousValue / 100f * height;
++                float y2 = bottom - currentValue / 100f * height;
++                float control = (x2 - x1) * 0.45f;
++                path.cubicTo(x1 + control, y1, x2 - control, y2, x2, y2);
++            }
+         }
+ 
+         @Override protected void onDraw(Canvas canvas) {
+@@ -1724,19 +1762,29 @@
+                 canvas.drawText("Graf se izriše med analizo", left + 20 * d, top + (bottom - top) / 2, textPaint);
+                 return;
+             }
++            float targetScore = scores.get(scores.size() - 1);
++            float targetPeak = peaks.get(peaks.size() - 1);
++            animatedLastScore += (targetScore - animatedLastScore) * 0.24f;
++            animatedLastPeak += (targetPeak - animatedLastPeak) * 0.24f;
++            boolean stillMoving = Math.abs(targetScore - animatedLastScore) > 0.08f
++                    || Math.abs(targetPeak - animatedLastPeak) > 0.08f;
++
+             float step = (right - left) / Math.max(1, MAX_POINTS - 1);
+             float offset = (MAX_POINTS - scores.size()) * step;
++            float height = bottom - top;
++            buildSmoothPath(scorePath, scores, animatedLastScore, left, bottom, step, offset, height);
++            buildSmoothPath(peakPath, peaks, animatedLastPeak, left, bottom, step, offset, height);
++            canvas.drawPath(scorePath, scorePaint);
++            canvas.drawPath(peakPath, peakPaint);
++
+             for (int i = 1; i < scores.size(); i++) {
+-                float x1 = left + offset + (i - 1) * step;
+-                float x2 = left + offset + i * step;
+-                float sy1 = bottom - scores.get(i - 1) / 100f * (bottom - top);
+-                float sy2 = bottom - scores.get(i) / 100f * (bottom - top);
+-                float py1 = bottom - peaks.get(i - 1) / 100f * (bottom - top);
+-                float py2 = bottom - peaks.get(i) / 100f * (bottom - top);
+-                canvas.drawLine(x1, sy1, x2, sy2, scorePaint);
+-                canvas.drawLine(x1, py1, x2, py2, peakPaint);
+-                if (dangers.get(i)) canvas.drawCircle(x2, sy2, 3.5f * d, dangerPaint);
++                if (!dangers.get(i)) continue;
++                float value = i == scores.size() - 1 ? animatedLastScore : scores.get(i);
++                float x = left + offset + i * step;
++                float y = bottom - value / 100f * height;
++                canvas.drawCircle(x, y, 3.5f * d, dangerPaint);
+             }
++            if (stillMoving) postInvalidateOnAnimation();
+         }
+     }
+ 
+@@ -1756,7 +1804,9 @@
+         private final RectF rect = new RectF();
+         private final RectF tooltipRect = new RectF();
+         private float[] current = new float[64];
++        private float[] target = new float[64];
+         private double peakHz = 0;
++        private double targetPeakHz = 0;
+         private boolean feedbackPeak = false;
+         private boolean simpleMode = true;
+         private boolean inspectionVisible = false;
+@@ -1786,14 +1836,49 @@
+ 
+         void setLevels(float[] levels, double peakHz, boolean feedbackPeak) {
+             if (levels == null || levels.length == 0) return;
+-            // Brez interpolacije: vsak FFT okvir je takoj prikazan.
+-            current = Arrays.copyOf(levels, levels.length);
+-            this.peakHz = peakHz;
++            if (target.length != levels.length || current.length != levels.length) {
++                target = Arrays.copyOf(levels, levels.length);
++                current = Arrays.copyOf(levels, levels.length);
++                this.peakHz = peakHz;
++            } else {
++                System.arraycopy(levels, 0, target, 0, levels.length);
++            }
++            targetPeakHz = peakHz;
+             this.feedbackPeak = feedbackPeak;
+-            if (inspectionVisible) updateInspectionFromX(inspectionX);
+             postInvalidateOnAnimation();
+         }
+ 
++        private boolean animateSpectrumFrame() {
++            if (target.length == 0) return false;
++            if (current.length != target.length) current = Arrays.copyOf(target, target.length);
++            boolean moving = false;
++            for (int i = 0; i < current.length; i++) {
++                float left = target[Math.max(0, i - 1)];
++                float center = target[i];
++                float right = target[Math.min(target.length - 1, i + 1)];
++                float spatiallySmoothed = left * 0.18f + center * 0.64f + right * 0.18f;
++                float difference = spatiallySmoothed - current[i];
++                float alpha = difference >= 0f ? 0.36f : 0.17f;
++                current[i] += difference * alpha;
++                if (Math.abs(difference) > 0.0015f) moving = true;
++            }
++            if (targetPeakHz >= MIN_HZ && targetPeakHz <= MAX_HZ) {
++                if (peakHz < MIN_HZ || peakHz > MAX_HZ) {
++                    peakHz = targetPeakHz;
++                } else {
++                    double currentLog = Math.log(peakHz);
++                    double targetLog = Math.log(targetPeakHz);
++                    double delta = targetLog - currentLog;
++                    currentLog += delta * 0.28;
++                    peakHz = Math.exp(currentLog);
++                    if (Math.abs(delta) > 0.001) moving = true;
++                }
++            } else {
++                peakHz = targetPeakHz;
++            }
++            return moving;
++        }
++
+         @Override
+         public boolean onTouchEvent(MotionEvent event) {
+             switch (event.getActionMasked()) {
+@@ -1873,6 +1958,8 @@
+         @Override
+         protected void onDraw(Canvas canvas) {
+             super.onDraw(canvas);
++            boolean spectrumMoving = animateSpectrumFrame();
++            if (inspectionVisible) updateInspectionFromX(inspectionX);
+             float density = getResources().getDisplayMetrics().density;
+             float left = plotLeft();
+             float right = plotRight();
+@@ -1970,6 +2057,7 @@
+                 canvas.drawText(tooltip, boxLeft + 11 * density,
+                         boxTop + 21 * density, axisPaint);
+             }
++            if (spectrumMoving) postInvalidateOnAnimation();
+         }
+     }
+ }
+--- a/SoundCheckAssistant/app/build.gradle
++++ b/SoundCheckAssistant/app/build.gradle
+@@ -10,8 +10,8 @@
+         applicationId 'si.ell.soundcheck.v02fix'
+         minSdk 26
+         targetSdk 35
+-        versionCode 5
+-        versionName '0.3.2'
++        versionCode 6
++        versionName '0.3.3'
+     }
+ 
+     buildTypes {

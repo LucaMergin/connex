@@ -1,0 +1,42 @@
+name: Diagnose SoundCheck v0.3.1 Source
+
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Inspect source chunks
+        shell: bash
+        run: |
+          : > chunk-sizes.txt
+          for f in soundcheck-v031/chunk*.txt; do
+            printf "%s " "$f" | tee -a chunk-sizes.txt
+            wc -c < "$f" | tee -a chunk-sizes.txt
+            sha256sum "$f" | tee -a chunk-sizes.txt
+          done
+          cat soundcheck-v031/chunk*.txt > combined.b64
+          printf "combined " | tee -a chunk-sizes.txt
+          wc -c < combined.b64 | tee -a chunk-sizes.txt
+          sha256sum combined.b64 | tee combined-b64.sha256
+          base64 --decode combined.b64 > reconstructed.zip || true
+          sha256sum reconstructed.zip | tee reconstructed-zip.sha256
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundCheck-v0.3.1-source-diagnostics
+          path: |
+            chunk-sizes.txt
+            combined.b64
+            combined-b64.sha256
+            reconstructed.zip
+            reconstructed-zip.sha256
+          if-no-files-found: error
+          retention-days: 7
