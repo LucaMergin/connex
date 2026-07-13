@@ -1,0 +1,57 @@
+name: Materialize SoundCheck v0.3.3 Source
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - ".github/workflows/materialize-soundcheck-v033-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: soundcheck-v0.3.3-smooth-graphs
+
+      - name: Reconstruct v0.3.2 source
+        shell: bash
+        run: |
+          cat \
+            soundcheck-v032/fix00.txt \
+            soundcheck-v032/fix01.txt \
+            soundcheck-v032/fix02.txt \
+            soundcheck-v032/fix03.txt \
+            soundcheck-v032/fix04.txt \
+            soundcheck-v032/fix05.txt \
+            soundcheck-v032/fix06.txt \
+            soundcheck-v032/fix07.txt \
+            soundcheck-v032/fix08.txt \
+            soundcheck-v032/chunk03.txt \
+            soundcheck-v032/chunk04.txt \
+            > /tmp/source.b64
+          test "$(wc -c < /tmp/source.b64)" -eq 36952
+          base64 --decode /tmp/source.b64 > /tmp/source.zip
+          echo "157c92a8f56fd557d934df6f6df37e028bee5477b46270d806b00f61350e95fb  /tmp/source.zip" | sha256sum --check
+          rm -rf /tmp/v033
+          mkdir -p /tmp/v033
+          unzip -q /tmp/source.zip -d /tmp/v033
+          patch -p1 -d /tmp/v033 < soundcheck-v033/smooth-graphs.patch
+          mkdir -p soundcheck-v033-materialized
+          cp /tmp/v033/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java soundcheck-v033-materialized/MainActivity.java
+          cp /tmp/v033/SoundCheckAssistant/app/build.gradle soundcheck-v033-materialized/app-build.gradle
+          cp /tmp/v033/SoundCheckAssistant/app/src/main/AndroidManifest.xml soundcheck-v033-materialized/AndroidManifest.xml
+
+      - name: Commit materialized files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add soundcheck-v033-materialized
+          git diff --cached --quiet || git commit -m "Materializiraj izvor SoundCheck v0.3.3"
+          git push origin HEAD:soundcheck-v0.3.3-smooth-graphs
