@@ -117,7 +117,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          gradle :app:assembleRelease --stacktrace 2>&1 | tee ../../../build-v051.log
+          gradle :app:assembleRelease --stacktrace 2>&1 | tee ../../build-v051.log
 
       - name: Upload build log
         if: always()
