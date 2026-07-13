@@ -29,6 +29,7 @@ jobs:
       - name: Reconstruct v0.3.2 source
         shell: bash
         run: |
+          set -euxo pipefail
           cat \
             soundcheck-v032/fix00.txt \
             soundcheck-v032/fix01.txt \
@@ -52,18 +53,35 @@ jobs:
       - name: Apply v0.3.3 smooth graphs
         shell: bash
         run: |
-          patch -p1 -d generated < soundcheck-v033/smooth-graphs.patch
+          set -euxo pipefail
+          patch --batch -p1 -d generated < soundcheck-v033/smooth-graphs.patch
+
+      - name: Decode v0.4.0 patch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          base64 --decode soundcheck-v040/patch.xz.b64 > /tmp/soundcheck-v040.patch.xz
+          xz --test /tmp/soundcheck-v040.patch.xz
+          xz -dc /tmp/soundcheck-v040.patch.xz > /tmp/soundcheck-v040.patch
+          test "$(wc -c < /tmp/soundcheck-v040.patch)" -gt 20000
+          grep -F "versionName '0.4.0'" /tmp/soundcheck-v040.patch
 
       - name: Apply v0.4.0 professional update
         shell: bash
         run: |
-          base64 --decode soundcheck-v040/patch.xz.b64 | xz -d > /tmp/soundcheck-v040.patch
-          patch -p1 -d generated < /tmp/soundcheck-v040.patch
-          grep "versionCode 7" generated/SoundCheckAssistant/app/build.gradle
-          grep "versionName '0.4.0'" generated/SoundCheckAssistant/app/build.gradle
-          grep "showSplashScreen" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
-          grep "PEAK_HOLD_MS" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
-          grep "showCalibrationDialog" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+          set -euxo pipefail
+          patch --batch --dry-run -p1 -d generated < /tmp/soundcheck-v040.patch
+          patch --batch -p1 -d generated < /tmp/soundcheck-v040.patch
+
+      - name: Verify v0.4.0 source changes
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F "versionCode 7" generated/SoundCheckAssistant/app/build.gradle
+          grep -F "versionName '0.4.0'" generated/SoundCheckAssistant/app/build.gradle
+          grep -F "showSplashScreen" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+          grep -F "PEAK_HOLD_MS" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
+          grep -F "showCalibrationDialog" generated/SoundCheckAssistant/app/src/main/java/si/ell/soundcheck/MainActivity.java
 
       - name: Build release APK
         working-directory: generated/SoundCheckAssistant
@@ -72,10 +90,11 @@ jobs:
       - name: Verify APK
         shell: bash
         run: |
+          set -euxo pipefail
           APK="generated/SoundCheckAssistant/app/build/outputs/apk/release/app-release-unsigned.apk"
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee apk-package.txt
-          grep "package: name='si.ell.soundcheck.v02fix' versionCode='7' versionName='0.4.0'" apk-package.txt
+          grep -F "package: name='si.ell.soundcheck.v02fix' versionCode='7' versionName='0.4.0'" apk-package.txt
           unzip -t "$APK" | tee apk-unzip-test.txt
           cp "$APK" SoundCheck-Assistant-v0.4.0-unsigned.apk
           sha256sum SoundCheck-Assistant-v0.4.0-unsigned.apk > apk-sha256.txt
