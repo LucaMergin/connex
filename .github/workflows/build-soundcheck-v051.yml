@@ -90,10 +90,10 @@ jobs:
         run: |
           set -euxo pipefail
           base64 --decode soundcheck-v051/patch.xz.b64 > /tmp/soundcheck-v051.patch.xz
-          echo "f02ae3403d8a334ee52df44be44db3c37a0dfb525c990da9d9ddab1c820b6ea1  /tmp/soundcheck-v051.patch.xz" | sha256sum --check
+          echo "6f84189e2c2507897fcdfeb44129fe875761bd18c49c884a4502720af7634756  /tmp/soundcheck-v051.patch.xz" | sha256sum --check
           xz --test /tmp/soundcheck-v051.patch.xz
           xz -dc /tmp/soundcheck-v051.patch.xz > /tmp/soundcheck-v051.patch
-          echo "db4b6ae6fc899ce7180e8ed8f2013deec9f123048ded7460889497bb03edf53f  /tmp/soundcheck-v051.patch" | sha256sum --check
+          echo "42936b774b4284663415d26af6fdb3886527f969e48b2e699e9b203601f05688  /tmp/soundcheck-v051.patch" | sha256sum --check
           patch --batch --dry-run -p1 -d generated < /tmp/soundcheck-v051.patch
           patch --batch -p1 -d generated < /tmp/soundcheck-v051.patch
 
