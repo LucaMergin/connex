@@ -1,0 +1,1 @@
+All direct chunks 00-10 are uploaded from the verified local APK. Trigger final reconstruction and publication.

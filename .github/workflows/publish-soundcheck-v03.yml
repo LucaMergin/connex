@@ -1,0 +1,55 @@
+name: Publish SoundCheck Assistant v0.3
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths-ignore:
+      - "downloads/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout v0.3 branch
+        uses: actions/checkout@v4
+        with:
+          ref: soundcheck-v0.3-build
+
+      - name: Reconstruct signed APK
+        shell: bash
+        run: |
+          cat soundcheck-v03-direct/chunk*.txt | tr -d '\r\n\t ' > /tmp/SoundCheck-Assistant-v0.3.apk.b64
+          echo "Base64 length: $(wc -c < /tmp/SoundCheck-Assistant-v0.3.apk.b64)"
+          test "$(wc -c < /tmp/SoundCheck-Assistant-v0.3.apk.b64)" -eq 50016
+          base64 --decode /tmp/SoundCheck-Assistant-v0.3.apk.b64 > SoundCheck-Assistant-v0.3.apk
+          echo "e6dc3660a19e1ce77ef528aa4dcbc012e9bcca58ca4615fd923d73a44e8e61da  SoundCheck-Assistant-v0.3.apk" | sha256sum --check
+
+      - name: Verify signature, package and version
+        shell: bash
+        run: |
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs SoundCheck-Assistant-v0.3.apk | tee SoundCheck-Assistant-v0.3-signature.txt
+          grep "Verified using v2 scheme (APK Signature Scheme v2): true" SoundCheck-Assistant-v0.3-signature.txt
+          grep "Verified using v3 scheme (APK Signature Scheme v3): true" SoundCheck-Assistant-v0.3-signature.txt
+          grep "40f51c661e0a07de600ddda4c948cd147ff15a9b3ec48c21ed00f148c4d1085d" SoundCheck-Assistant-v0.3-signature.txt
+          "$BUILD_TOOLS/aapt" dump badging SoundCheck-Assistant-v0.3.apk | tee SoundCheck-Assistant-v0.3-package.txt
+          grep "package: name='si.ell.soundcheck.v02fix' versionCode='3' versionName='0.3.0'" SoundCheck-Assistant-v0.3-package.txt
+          unzip -t SoundCheck-Assistant-v0.3.apk | tee SoundCheck-Assistant-v0.3-unzip-test.txt
+
+      - name: Publish direct-download APK
+        shell: bash
+        run: |
+          mkdir -p downloads
+          cp SoundCheck-Assistant-v0.3.apk downloads/SoundCheck-Assistant-v0.3.apk
+          sha256sum downloads/SoundCheck-Assistant-v0.3.apk > downloads/SoundCheck-Assistant-v0.3.sha256
+          cp SoundCheck-Assistant-v0.3-signature.txt downloads/SoundCheck-Assistant-v0.3-signature.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add downloads/SoundCheck-Assistant-v0.3.apk downloads/SoundCheck-Assistant-v0.3.sha256 downloads/SoundCheck-Assistant-v0.3-signature.txt
+          git diff --cached --quiet || git commit -m "Objavi SoundCheck Assistant v0.3 APK"
+          git push origin HEAD:soundcheck-v0.3-build
