@@ -114,7 +114,19 @@ jobs:
 
       - name: Build release APK
         working-directory: generated/SoundCheckAssistant
-        run: gradle :app:assembleRelease --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --stacktrace 2>&1 | tee ../../../build-v051.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundCheck-Assistant-v0.5.1-log
+          path: build-v051.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify APK
         shell: bash
