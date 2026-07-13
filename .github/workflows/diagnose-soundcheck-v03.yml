@@ -1,0 +1,43 @@
+name: Diagnose SoundCheck v0.3 Chunks
+
+on:
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: soundcheck-v0.3-build
+
+      - name: Inspect chunks
+        shell: bash
+        run: |
+          : > chunk-sizes.txt
+          for f in soundcheck-v03-direct/chunk*.txt; do
+            printf "%s " "$f" | tee -a chunk-sizes.txt
+            wc -c < "$f" | tee -a chunk-sizes.txt
+          done
+          cat soundcheck-v03-direct/chunk*.txt | tr -d '\r\n\t ' > combined.b64
+          printf "combined " | tee -a chunk-sizes.txt
+          wc -c < combined.b64 | tee -a chunk-sizes.txt
+          sha256sum combined.b64 | tee combined-b64.sha256
+          base64 --decode combined.b64 > reconstructed.apk || true
+          sha256sum reconstructed.apk | tee reconstructed-apk.sha256
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundCheck-v0.3-chunk-diagnostics
+          path: |
+            chunk-sizes.txt
+            combined.b64
+            combined-b64.sha256
+            reconstructed.apk
+            reconstructed-apk.sha256
+          if-no-files-found: error
+          retention-days: 7
