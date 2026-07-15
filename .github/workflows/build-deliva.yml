@@ -37,7 +37,8 @@ jobs:
 
       - name: Razpakiraj projekt
         run: |
-          base64 --decode deliva-build/Deliva_v0.1_project.zip.b64 > /tmp/deliva.zip
+          cat deliva-build/Deliva_v0.1_project.zip.b64.part-* > /tmp/deliva.b64
+          base64 --decode /tmp/deliva.b64 > /tmp/deliva.zip
           unzip -q /tmp/deliva.zip -d .
 
       - name: Izdelaj Deliva APK
