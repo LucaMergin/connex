@@ -35,18 +35,32 @@ jobs:
           gradle-version: "8.7"
           cache-disabled: true
 
-      - name: Pripravi Sumora v0.6.1 projekt
+      - name: Obnovi preverjeni projekt Sumora v0.6
         run: |
+          set -euxo pipefail
+          ls -lah sumora-build-v06
           cat sumora-build-v06/source.part-* > /tmp/sumora-v06.b64
           test "$(wc -c < /tmp/sumora-v06.b64)" = "46556"
           base64 --decode /tmp/sumora-v06.b64 > /tmp/Sumora_v0.6_source.zip
           echo "7a3e38250de39ac0b03daf6e0dafb6899e1c7ed41d69625a4638667ce859adb8  /tmp/Sumora_v0.6_source.zip" | sha256sum -c -
           unzip -t /tmp/Sumora_v0.6_source.zip
           unzip -q /tmp/Sumora_v0.6_source.zip -d .
+          test -f sumora_v06_src/app/build.gradle
+
+      - name: Uporabi popravek Sumora v0.6.1
+        run: |
+          set -euxo pipefail
           base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 > /tmp/sumora-v061.patch.gz
+          gzip -t /tmp/sumora-v061.patch.gz
           gunzip -c /tmp/sumora-v061.patch.gz > /tmp/sumora-v061.patch
           cd sumora_v06_src
+          git apply --check /tmp/sumora-v061.patch
           git apply /tmp/sumora-v061.patch
+
+      - name: Preveri izvorno različico in konfiguracijo
+        run: |
+          set -euxo pipefail
+          cd sumora_v06_src
           grep -Fq "versionCode 7" app/build.gradle
           grep -Fq "versionName '0.6.1'" app/build.gradle
           grep -Fq "Sumora v0.6.1" app/src/main/java/si/deliva/app/MainActivity.java
@@ -58,8 +72,9 @@ jobs:
         working-directory: sumora_v06_src
         run: gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
 
-      - name: Preveri različico in strežniško konfiguracijo
+      - name: Preveri različico in strežniško konfiguracijo APK
         run: |
+          set -euxo pipefail
           APK="sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk"
           test -f "$APK"
           test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")" = "si.deliva.app"
