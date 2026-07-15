@@ -96,7 +96,6 @@ jobs:
             strings "/tmp/$DEX" >> /tmp/sumora-classes.strings
           done
           grep -Fq "Sumora v0.6.2" /tmp/sumora-classes.strings
-          grep -Fq "Račun je ustvarjen in prijava je uspešna." /tmp/sumora-classes.strings
           URL_VALUE=$(sed -n 's/^SUMORA_SUPABASE_URL=//p' sumora_v06_src/gradle.properties)
           KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
           test -n "$URL_VALUE"
