@@ -33,6 +33,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
+          cache-disabled: true
 
       - name: Pripravi Sumora projekt
         run: |
@@ -46,10 +47,27 @@ jobs:
           gunzip -c /tmp/sumora.patch.gz > /tmp/sumora.patch
           cd deliva_v05_src
           git apply /tmp/sumora.patch
+          grep -F "versionCode 6" app/build.gradle
+          grep -F "versionName '0.6.0'" app/build.gradle
+          grep -F "Sumora v0.6" app/src/main/java/si/deliva/app/MainActivity.java
+          rm -rf app/build build .gradle
 
       - name: Izdelaj nepodpisan release APK
         working-directory: deliva_v05_src
-        run: gradle :app:assembleRelease --stacktrace
+        run: gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
+
+      - name: Preveri vsebino in različico APK
+        run: |
+          APK="deliva_v05_src/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+          test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")" = "si.deliva.app"
+          test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")" = "6"
+          test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$APK")" = "0.6.0"
+          unzip -p "$APK" classes.dex | strings | grep -F "Sumora v0.6"
+          if unzip -p "$APK" classes.dex | strings | grep -F "Deliva v0.5"; then
+            echo "Napaka: APK še vedno vsebuje oznako Deliva v0.5."
+            exit 1
+          fi
 
       - name: Poravnaj APK in pripravi podpisovalnik
         run: |
@@ -59,7 +77,7 @@ jobs:
       - name: Shrani gradbene datoteke
         uses: actions/upload-artifact@v4
         with:
-          name: Sumora-v0.6-build
+          name: Sumora-v0.6-build-fixed
           path: |
             /tmp/Sumora-v0.6-unsigned-aligned.apk
             /tmp/apksigner.jar
