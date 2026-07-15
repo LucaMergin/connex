@@ -36,7 +36,8 @@ jobs:
 
       - name: Razpakiraj projekt
         run: |
-          base64 --decode deliva-build-v03/Deliva_v0.3_source.zip.b64 > /tmp/deliva-v03.zip
+          cat deliva-build-v03/chunk-*.b64 > /tmp/deliva-v03.b64
+          base64 --decode /tmp/deliva-v03.b64 > /tmp/deliva-v03.zip
           unzip -q /tmp/deliva-v03.zip -d .
 
       - name: Izdelaj nepodpisan release APK
