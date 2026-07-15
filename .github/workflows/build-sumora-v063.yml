@@ -54,13 +54,21 @@ jobs:
       - name: Namesti preverjene datoteke v0.6.3
         run: |
           set -euxo pipefail
-          cat sumora-build-v063/main-source.part-* > /tmp/MainActivity.java.gz.b64
+          cat sumora-build-v063/main-source.part-* | tr -d '\r\n' > /tmp/MainActivity.java.gz.b64
           test "$(wc -c < /tmp/MainActivity.java.gz.b64)" = "22932"
-          base64 --decode /tmp/MainActivity.java.gz.b64 | gunzip > sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
-          test "$(wc -c < sumora-build-v063/splash-source.b64)" = "2320"
-          base64 --decode sumora-build-v063/splash-source.b64 | gunzip > sumora_v06_src/app/src/main/java/si/deliva/app/SplashActivity.java
-          test "$(wc -c < sumora-build-v063/build-gradle-source.b64)" = "580"
-          base64 --decode sumora-build-v063/build-gradle-source.b64 | gunzip > sumora_v06_src/app/build.gradle
+          base64 --decode /tmp/MainActivity.java.gz.b64 > /tmp/MainActivity.java.gz
+          gzip -t /tmp/MainActivity.java.gz
+          gunzip -c /tmp/MainActivity.java.gz > sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          tr -d '\r\n' < sumora-build-v063/splash-source.b64 > /tmp/SplashActivity.java.gz.b64
+          test "$(wc -c < /tmp/SplashActivity.java.gz.b64)" = "2320"
+          base64 --decode /tmp/SplashActivity.java.gz.b64 > /tmp/SplashActivity.java.gz
+          gzip -t /tmp/SplashActivity.java.gz
+          gunzip -c /tmp/SplashActivity.java.gz > sumora_v06_src/app/src/main/java/si/deliva/app/SplashActivity.java
+          tr -d '\r\n' < sumora-build-v063/build-gradle-source.b64 > /tmp/build.gradle.gz.b64
+          test "$(wc -c < /tmp/build.gradle.gz.b64)" = "580"
+          base64 --decode /tmp/build.gradle.gz.b64 > /tmp/build.gradle.gz
+          gzip -t /tmp/build.gradle.gz
+          gunzip -c /tmp/build.gradle.gz > sumora_v06_src/app/build.gradle
           echo "49f06f988124a8b9777abc8b3c8edd0cf2caba9f2da430bafb153f3b06e4cb84  sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java" | sha256sum -c -
           echo "8dc1366368a32c23108ae957adcd990d48dbf0c2dff01edf0077e57256d93ccd  sumora_v06_src/app/src/main/java/si/deliva/app/SplashActivity.java" | sha256sum -c -
           echo "05e5266a18f9b99611f88e2c5ad3a39f608c8b3b68620279bd3686a08a05f731  sumora_v06_src/app/build.gradle" | sha256sum -c -
