@@ -54,9 +54,12 @@ jobs:
           base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 | gunzip > /tmp/v062.patch
           git apply --check --directory=sumora_v06_src /tmp/v062.patch
           git apply --directory=sumora_v06_src /tmp/v062.patch
-          cat sumora-build-v063/relative.part-* | base64 --decode | gunzip > /tmp/v063.patch
-          git apply --check --directory=sumora_v06_src /tmp/v063.patch
-          git apply --directory=sumora_v06_src /tmp/v063.patch
+          cat sumora-build-v063/relative.part-* > /tmp/v063.b64
+          test "$(wc -c < /tmp/v063.b64)" = "10508"
+          base64 --decode /tmp/v063.b64 > /tmp/v063.patch.gz
+          gzip -t /tmp/v063.patch.gz
+          gunzip -c /tmp/v063.patch.gz > /tmp/v063.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v063.patch
 
       - name: Preveri izvorno različico in novo zasnovo
         run: |
