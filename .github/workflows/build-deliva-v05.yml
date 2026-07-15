@@ -1,0 +1,48 @@
+name: Build Deliva v0.5 APK
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "deliva-build-v05/**"
+      - ".github/workflows/build-deliva-v05.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Prevzem kode
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Android 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+      - name: Razpakiraj projekt
+        run: unzip -q deliva-build-v05/Deliva_v0.5_source.zip -d .
+      - name: Izdelaj nepodpisan release APK
+        working-directory: deliva_v05_src
+        run: gradle :app:assembleRelease --stacktrace
+      - name: Poravnaj APK in pripravi podpisovalnik
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 deliva_v05_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Deliva-v0.5-unsigned-aligned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/apksigner.jar
+      - name: Shrani gradbene datoteke
+        uses: actions/upload-artifact@v4
+        with:
+          name: Deliva-v0.5-build
+          path: |
+            /tmp/Deliva-v0.5-unsigned-aligned.apk
+            /tmp/apksigner.jar
+          if-no-files-found: error
