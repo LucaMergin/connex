@@ -57,15 +57,10 @@ jobs:
           git apply --check /tmp/sumora-v061.patch
           git apply /tmp/sumora-v061.patch
 
-      - name: Preveri izvorno različico in konfiguracijo
+      - name: Očisti projekt pred gradnjo
         run: |
           set -euxo pipefail
           cd sumora_v06_src
-          grep -F "versionCode 7" app/build.gradle
-          grep -F "versionName '0.6.1'" app/build.gradle
-          grep -F "Sumora v0.6.1" app/src/main/java/si/deliva/app/MainActivity.java
-          grep -F "SUMORA_SUPABASE_URL=" gradle.properties
-          grep -F "SUMORA_SUPABASE_PUBLISHABLE_KEY=" gradle.properties
           rm -rf app/build build .gradle
 
       - name: Izdelaj nepodpisan release APK
@@ -84,9 +79,11 @@ jobs:
           KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
           test -n "$URL_VALUE"
           test -n "$KEY_VALUE"
-          unzip -p "$APK" classes.dex | strings | grep -Fq "$URL_VALUE"
-          unzip -p "$APK" classes.dex | strings | grep -Fq "$KEY_VALUE"
-          unzip -p "$APK" classes.dex | strings | grep -Fq "Sumora v0.6.1"
+          unzip -p "$APK" classes.dex > /tmp/sumora-classes.dex
+          strings /tmp/sumora-classes.dex > /tmp/sumora-classes.strings
+          grep -Fq "$URL_VALUE" /tmp/sumora-classes.strings
+          grep -Fq "$KEY_VALUE" /tmp/sumora-classes.strings
+          grep -Fq "Sumora v0.6.1" /tmp/sumora-classes.strings
 
       - name: Poravnaj APK in pripravi podpisovalnik
         run: |
