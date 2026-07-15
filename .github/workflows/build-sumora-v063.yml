@@ -57,7 +57,7 @@ jobs:
           cat sumora-build-v063/verified-patch.part-* > /tmp/v063.b64
           test "$(wc -c < /tmp/v063.b64)" = "10508"
           base64 --decode /tmp/v063.b64 > /tmp/v063.patch.gz
-          echo "12cc4df7f4286760d21dcc293eaed902425e31f1a78c62603d38c3cbf0d7516b  /tmp/v063.patch.gz" | sha256sum -c -
+          echo "511f4bb7fdc902fc3b866aa2efe1fa189b7bf80d51f7ebfb01d18cd8a914acbb  /tmp/v063.patch.gz" | sha256sum -c -
           gzip -t /tmp/v063.patch.gz
           gunzip -c /tmp/v063.patch.gz > /tmp/v063.patch
           git apply --check --directory=sumora_v06_src /tmp/v063.patch
