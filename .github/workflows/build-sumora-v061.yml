@@ -67,14 +67,15 @@ jobs:
         working-directory: sumora_v06_src
         run: gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
 
-      - name: Preveri manifest APK
+      - name: Zapiši manifest APK
         run: |
           set -euxo pipefail
           APK="sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk"
           test -f "$APK"
-          test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")" = "si.deliva.app"
-          test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")" = "7"
-          test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$APK")" = "0.6.1"
+          APP_ID=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")
+          VERSION_CODE=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")
+          VERSION_NAME=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$APK")
+          printf 'application_id=%s\nversion_code=%s\nversion_name=%s\n' "$APP_ID" "$VERSION_CODE" "$VERSION_NAME" | tee /tmp/Sumora-v0.6.1-manifest.txt
 
       - name: Pripravi pregled vsebine DEX
         run: |
@@ -86,25 +87,15 @@ jobs:
             strings "/tmp/$DEX" >> /tmp/sumora-classes.strings
           done
           test -s /tmp/sumora-classes.strings
-
-      - name: Preveri Supabase URL v APK
-        run: |
-          set -euxo pipefail
           URL_VALUE=$(sed -n 's/^SUMORA_SUPABASE_URL=//p' sumora_v06_src/gradle.properties)
-          test -n "$URL_VALUE"
-          grep -Fq "$URL_VALUE" /tmp/sumora-classes.strings
-
-      - name: Preveri publishable key v APK
-        run: |
-          set -euxo pipefail
           KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
-          test -n "$KEY_VALUE"
-          grep -Fq "$KEY_VALUE" /tmp/sumora-classes.strings
-
-      - name: Preveri oznako Sumora v0.6.1 v APK
-        run: |
-          set -euxo pipefail
-          grep -Fq "Sumora v0.6.1" /tmp/sumora-classes.strings
+          URL_PRESENT=no
+          KEY_PRESENT=no
+          VERSION_PRESENT=no
+          grep -Fq "$URL_VALUE" /tmp/sumora-classes.strings && URL_PRESENT=yes || true
+          grep -Fq "$KEY_VALUE" /tmp/sumora-classes.strings && KEY_PRESENT=yes || true
+          grep -Fq "Sumora v0.6.1" /tmp/sumora-classes.strings && VERSION_PRESENT=yes || true
+          printf 'supabase_url=%s\npublishable_key=%s\nversion_label=%s\n' "$URL_PRESENT" "$KEY_PRESENT" "$VERSION_PRESENT" | tee /tmp/Sumora-v0.6.1-content-check.txt
 
       - name: Poravnaj APK in pripravi podpisovalnik
         run: |
@@ -118,4 +109,16 @@ jobs:
           path: |
             /tmp/Sumora-v0.6.1-unsigned-aligned.apk
             /tmp/apksigner.jar
+            /tmp/Sumora-v0.6.1-manifest.txt
+            /tmp/Sumora-v0.6.1-content-check.txt
           if-no-files-found: error
+
+      - name: Končno preverjanje APK
+        run: |
+          set -euxo pipefail
+          grep -Fxq 'application_id=si.deliva.app' /tmp/Sumora-v0.6.1-manifest.txt
+          grep -Fxq 'version_code=7' /tmp/Sumora-v0.6.1-manifest.txt
+          grep -Fxq 'version_name=0.6.1' /tmp/Sumora-v0.6.1-manifest.txt
+          grep -Fxq 'supabase_url=yes' /tmp/Sumora-v0.6.1-content-check.txt
+          grep -Fxq 'publishable_key=yes' /tmp/Sumora-v0.6.1-content-check.txt
+          grep -Fxq 'version_label=yes' /tmp/Sumora-v0.6.1-content-check.txt
