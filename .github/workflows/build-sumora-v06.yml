@@ -36,7 +36,12 @@ jobs:
 
       - name: Pripravi Sumora projekt
         run: |
-          unzip -q deliva-build-v05/Deliva_v0.5_source.zip
+          cat deliva-build-v05/safe.part-* > /tmp/deliva-v05.b64
+          test "$(wc -c < /tmp/deliva-v05.b64)" = "44552"
+          base64 --decode /tmp/deliva-v05.b64 > /tmp/Deliva_v0.5_source.zip
+          echo "0b47cee785e6f6760eb059db473810ccd1b76499d2902ddc60eab7dc1775c59c  /tmp/Deliva_v0.5_source.zip" | sha256sum -c -
+          unzip -t /tmp/Deliva_v0.5_source.zip
+          unzip -q /tmp/Deliva_v0.5_source.zip -d .
           base64 --decode sumora-build-v06/sumora_v06.patch.gz.b64 > /tmp/sumora.patch.gz
           gunzip -c /tmp/sumora.patch.gz > /tmp/sumora.patch
           cd deliva_v05_src
