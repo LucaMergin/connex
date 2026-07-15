@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: ["master"]
     paths:
-      - "deliva-build/**"
+      - "deliva-android/**"
       - ".github/workflows/build-deliva.yml"
   workflow_dispatch:
 
@@ -13,43 +13,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
-      - name: Prevzem kode
-        uses: actions/checkout@v4
-
-      - name: Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Android 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Gradle 8.7
-        uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
-
-      - name: Razpakiraj projekt
-        run: |
-          cat deliva-build/Deliva_v0.1_project.zip.b64.part-* > /tmp/deliva.b64
-          base64 --decode /tmp/deliva.b64 > /tmp/deliva.zip
-          unzip -q /tmp/deliva.zip -d .
-
-      - name: Izdelaj Deliva APK
-        working-directory: Deliva_v0.1
+      - name: Izdelaj APK
+        working-directory: deliva-android
         run: gradle :app:assembleDebug --stacktrace
-
-      - name: Pripravi namestitveno datoteko
-        run: cp Deliva_v0.1/app/build/outputs/apk/debug/app-debug.apk /tmp/Deliva-v0.1.apk
-
-      - name: Shrani APK
-        uses: actions/upload-artifact@v4
+      - name: Pripravi datoteko
+        run: cp deliva-android/app/build/outputs/apk/debug/app-debug.apk /tmp/Deliva-v0.1.apk
+      - uses: actions/upload-artifact@v4
         with:
           name: Deliva-v0.1-APK
           path: /tmp/Deliva-v0.1.apk
