@@ -29,8 +29,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
-      - name: Razpakiraj projekt
-        run: unzip -q deliva-build-v05/Deliva_v0.5_source.zip -d .
+      - name: Sestavi in razpakiraj projekt
+        run: |
+          cat deliva-build-v05/source.b64.part-* > /tmp/deliva-v05.b64
+          base64 --decode /tmp/deliva-v05.b64 > /tmp/Deliva_v0.5_source.zip
+          unzip -t /tmp/Deliva_v0.5_source.zip
+          unzip -q /tmp/Deliva_v0.5_source.zip -d .
       - name: Izdelaj nepodpisan release APK
         working-directory: deliva_v05_src
         run: gradle :app:assembleRelease --stacktrace
