@@ -34,8 +34,12 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Razpakiraj projekt
-        run: unzip -q deliva-build-v04/Deliva_v0.4_source.zip -d .
+      - name: Sestavi in preveri projekt
+        run: |
+          cat deliva-build-v04/source.part-* > /tmp/deliva-v04.b64
+          base64 --decode /tmp/deliva-v04.b64 > /tmp/Deliva_v0.4_source.zip
+          unzip -t /tmp/Deliva_v0.4_source.zip
+          unzip -q /tmp/Deliva_v0.4_source.zip -d .
 
       - name: Izdelaj nepodpisan release APK
         working-directory: deliva_v04_src
