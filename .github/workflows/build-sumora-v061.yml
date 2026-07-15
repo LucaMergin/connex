@@ -61,11 +61,11 @@ jobs:
         run: |
           set -euxo pipefail
           cd sumora_v06_src
-          grep -Fq "versionCode 7" app/build.gradle
-          grep -Fq "versionName '0.6.1'" app/build.gradle
-          grep -Fq "Sumora v0.6.1" app/src/main/java/si/deliva/app/MainActivity.java
-          grep -Fq "SUMORA_SUPABASE_URL=" gradle.properties
-          grep -Fq "SUMORA_SUPABASE_PUBLISHABLE_KEY=" gradle.properties
+          grep -F "versionCode 7" app/build.gradle
+          grep -F "versionName '0.6.1'" app/build.gradle
+          grep -F "Sumora v0.6.1" app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "SUMORA_SUPABASE_URL=" gradle.properties
+          grep -F "SUMORA_SUPABASE_PUBLISHABLE_KEY=" gradle.properties
           rm -rf app/build build .gradle
 
       - name: Izdelaj nepodpisan release APK
