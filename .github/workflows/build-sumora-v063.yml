@@ -54,7 +54,7 @@ jobs:
           base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 | gunzip > /tmp/v062.patch
           git apply --check --directory=sumora_v06_src /tmp/v062.patch
           git apply --directory=sumora_v06_src /tmp/v062.patch
-          base64 --decode sumora-build-v063/sumora_v063.patch.gz.b64 | gunzip > /tmp/v063.patch
+          cat sumora-build-v063/relative.part-* | base64 --decode | gunzip > /tmp/v063.patch
           git apply --check --directory=sumora_v06_src /tmp/v063.patch
           git apply --directory=sumora_v06_src /tmp/v063.patch
 
