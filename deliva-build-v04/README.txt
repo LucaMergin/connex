@@ -1,0 +1,1 @@
+Začasni gradbeni paket za Deliva v0.4. Glavna veja ostane nespremenjena.
