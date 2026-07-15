@@ -33,10 +33,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.7"
+          cache-disabled: true
 
       - name: Pripravi Sumora v0.6.1 projekt
         run: |
-          cat sumora-build-v06/source.b64.part-* > /tmp/sumora-v06.b64
+          cat sumora-build-v06/source.part-* > /tmp/sumora-v06.b64
+          test "$(wc -c < /tmp/sumora-v06.b64)" = "46556"
           base64 --decode /tmp/sumora-v06.b64 > /tmp/Sumora_v0.6_source.zip
           echo "7a3e38250de39ac0b03daf6e0dafb6899e1c7ed41d69625a4638667ce859adb8  /tmp/Sumora_v0.6_source.zip" | sha256sum -c -
           unzip -t /tmp/Sumora_v0.6_source.zip
