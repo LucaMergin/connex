@@ -1,0 +1,121 @@
+name: Build Sumora v0.6.2 APK
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "sumora-build-v062/**"
+      - ".github/workflows/build-sumora-v062.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Prevzem kode
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Android 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+          cache-disabled: true
+
+      - name: Obnovi preverjeni projekt Sumora v0.6
+        run: |
+          set -euxo pipefail
+          cat sumora-build-v06/source.part-* > /tmp/sumora-v06.b64
+          test "$(wc -c < /tmp/sumora-v06.b64)" = "46556"
+          base64 --decode /tmp/sumora-v06.b64 > /tmp/Sumora_v0.6_source.zip
+          echo "7a3e38250de39ac0b03daf6e0dafb6899e1c7ed41d69625a4638667ce859adb8  /tmp/Sumora_v0.6_source.zip" | sha256sum -c -
+          unzip -t /tmp/Sumora_v0.6_source.zip
+          unzip -q /tmp/Sumora_v0.6_source.zip -d .
+          test -f sumora_v06_src/app/build.gradle
+
+      - name: Uporabi popravek Sumora v0.6.1
+        run: |
+          set -euxo pipefail
+          base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 > /tmp/sumora-v061.patch.gz
+          gzip -t /tmp/sumora-v061.patch.gz
+          gunzip -c /tmp/sumora-v061.patch.gz > /tmp/sumora-v061.patch
+          git apply --check --directory=sumora_v06_src /tmp/sumora-v061.patch
+          git apply --directory=sumora_v06_src /tmp/sumora-v061.patch
+
+      - name: Uporabi popravek Sumora v0.6.2
+        run: |
+          set -euxo pipefail
+          base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 > /tmp/sumora-v062.patch.gz
+          gzip -t /tmp/sumora-v062.patch.gz
+          gunzip -c /tmp/sumora-v062.patch.gz > /tmp/sumora-v062.patch
+          git apply --check --directory=sumora_v06_src /tmp/sumora-v062.patch
+          git apply --directory=sumora_v06_src /tmp/sumora-v062.patch
+          grep -F "versionCode 8" sumora_v06_src/app/build.gradle
+          grep -F "versionName '0.6.2'" sumora_v06_src/app/build.gradle
+          grep -F "Sumora v0.6.2" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "signUpWithPassword" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
+          grep -F "signInWithPassword" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
+
+      - name: Očisti projekt pred gradnjo
+        run: |
+          set -euxo pipefail
+          cd sumora_v06_src
+          rm -rf app/build build .gradle
+
+      - name: Izdelaj nepodpisan release APK
+        working-directory: sumora_v06_src
+        run: gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
+
+      - name: Preveri manifest in vsebino APK
+        run: |
+          set -euxo pipefail
+          APK="sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+          APP_ID=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")
+          VERSION_CODE=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")
+          VERSION_NAME=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$APK")
+          test "$APP_ID" = "si.deliva.app"
+          test "$VERSION_CODE" = "8"
+          test "$VERSION_NAME" = "0.6.2"
+          : > /tmp/sumora-classes.strings
+          for DEX in $(unzip -Z1 "$APK" | grep '^classes.*\.dex$'); do
+            unzip -p "$APK" "$DEX" > "/tmp/$DEX"
+            strings "/tmp/$DEX" >> /tmp/sumora-classes.strings
+          done
+          grep -Fq "Sumora v0.6.2" /tmp/sumora-classes.strings
+          grep -Fq "Račun je ustvarjen in prijava je uspešna." /tmp/sumora-classes.strings
+          URL_VALUE=$(sed -n 's/^SUMORA_SUPABASE_URL=//p' sumora_v06_src/gradle.properties)
+          KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
+          test -n "$URL_VALUE"
+          test -n "$KEY_VALUE"
+          grep -Fq "$URL_VALUE" /tmp/sumora-classes.strings
+          grep -Fq "$KEY_VALUE" /tmp/sumora-classes.strings
+          printf 'application_id=%s\nversion_code=%s\nversion_name=%s\n' "$APP_ID" "$VERSION_CODE" "$VERSION_NAME" > /tmp/Sumora-v0.6.2-manifest.txt
+
+      - name: Poravnaj APK in pripravi podpisovalnik
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Sumora-v0.6.2-unsigned-aligned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/apksigner.jar
+
+      - name: Shrani gradbene datoteke
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sumora-v0.6.2-build
+          path: |
+            /tmp/Sumora-v0.6.2-unsigned-aligned.apk
+            /tmp/apksigner.jar
+            /tmp/Sumora-v0.6.2-manifest.txt
+          if-no-files-found: error
