@@ -121,8 +121,8 @@ jobs:
             strings "/tmp/$DEX" >> /tmp/sumora-classes.strings
           done
           grep -Fq "Pregled po kategorijah" /tmp/sumora-classes.strings
-          grep -Fq "Vsi stroški v kategoriji" /tmp/sumora-classes.strings
-          grep -Fq "Največji strošek" /tmp/sumora-classes.strings
+          grep -Fq "showCategoryDetails" /tmp/sumora-classes.strings
+          grep -Fq "expensesForCategory" /tmp/sumora-classes.strings
           grep -Fq "cloud_import_approved_" /tmp/sumora-classes.strings
           ! grep -Fq "Sumora v0.6.3" /tmp/sumora-classes.strings
 
