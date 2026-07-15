@@ -35,7 +35,7 @@ jobs:
           gradle-version: "8.7"
           cache-disabled: true
 
-      - name: Obnovi preverjeni projekt Sumora v0.6
+      - name: Obnovi projekt do v0.6.2
         run: |
           set -euxo pipefail
           cat sumora-build-v06/source.part-* > /tmp/sumora-v06.b64
@@ -44,24 +44,28 @@ jobs:
           echo "7a3e38250de39ac0b03daf6e0dafb6899e1c7ed41d69625a4638667ce859adb8  /tmp/Sumora_v0.6_source.zip" | sha256sum -c -
           unzip -t /tmp/Sumora_v0.6_source.zip
           unzip -q /tmp/Sumora_v0.6_source.zip -d .
-
-      - name: Uporabi popravke v0.6.1, v0.6.2 in v0.6.3
-        run: |
-          set -euxo pipefail
           base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 | gunzip > /tmp/v061.patch
           git apply --check --directory=sumora_v06_src /tmp/v061.patch
           git apply --directory=sumora_v06_src /tmp/v061.patch
           base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 | gunzip > /tmp/v062.patch
           git apply --check --directory=sumora_v06_src /tmp/v062.patch
           git apply --directory=sumora_v06_src /tmp/v062.patch
-          cat sumora-build-v063/relative.part-* > /tmp/v063.b64
-          test "$(wc -c < /tmp/v063.b64)" = "10508"
-          base64 --decode /tmp/v063.b64 > /tmp/v063.patch.gz
-          gzip -t /tmp/v063.patch.gz
-          gunzip -c /tmp/v063.patch.gz > /tmp/v063.patch
-          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v063.patch
 
-      - name: Preveri izvorno različico in novo zasnovo
+      - name: Namesti preverjene datoteke v0.6.3
+        run: |
+          set -euxo pipefail
+          cat sumora-build-v063/main-source.part-* > /tmp/MainActivity.java.gz.b64
+          test "$(wc -c < /tmp/MainActivity.java.gz.b64)" = "22932"
+          base64 --decode /tmp/MainActivity.java.gz.b64 | gunzip > sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          test "$(wc -c < sumora-build-v063/splash-source.b64)" = "2320"
+          base64 --decode sumora-build-v063/splash-source.b64 | gunzip > sumora_v06_src/app/src/main/java/si/deliva/app/SplashActivity.java
+          test "$(wc -c < sumora-build-v063/build-gradle-source.b64)" = "580"
+          base64 --decode sumora-build-v063/build-gradle-source.b64 | gunzip > sumora_v06_src/app/build.gradle
+          echo "49f06f988124a8b9777abc8b3c8edd0cf2caba9f2da430bafb153f3b06e4cb84  sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java" | sha256sum -c -
+          echo "8dc1366368a32c23108ae957adcd990d48dbf0c2dff01edf0077e57256d93ccd  sumora_v06_src/app/src/main/java/si/deliva/app/SplashActivity.java" | sha256sum -c -
+          echo "05e5266a18f9b99611f88e2c5ad3a39f608c8b3b68620279bd3686a08a05f731  sumora_v06_src/app/build.gradle" | sha256sum -c -
+
+      - name: Preveri zasnovo in konfiguracijo
         run: |
           set -euxo pipefail
           grep -F "versionCode 9" sumora_v06_src/app/build.gradle
@@ -73,7 +77,7 @@ jobs:
           grep -F "SUMORA_SUPABASE_URL=" sumora_v06_src/gradle.properties
           grep -F "SUMORA_SUPABASE_PUBLISHABLE_KEY=" sumora_v06_src/gradle.properties
 
-      - name: Očisti in zgradi release APK
+      - name: Zgradi release APK
         working-directory: sumora_v06_src
         run: |
           rm -rf app/build build .gradle
@@ -99,6 +103,8 @@ jobs:
           grep -Fq "cloud_import_approved_" /tmp/sumora-classes.strings
           URL_VALUE=$(sed -n 's/^SUMORA_SUPABASE_URL=//p' sumora_v06_src/gradle.properties)
           KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
+          test -n "$URL_VALUE"
+          test -n "$KEY_VALUE"
           grep -Fq "$URL_VALUE" /tmp/sumora-classes.strings
           grep -Fq "$KEY_VALUE" /tmp/sumora-classes.strings
           printf 'application_id=%s\nversion_code=%s\nversion_name=%s\n' "$APP_ID" "$VERSION_CODE" "$VERSION_NAME" > /tmp/Sumora-v0.6.3-manifest.txt
