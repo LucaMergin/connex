@@ -35,30 +35,26 @@ jobs:
           gradle-version: "8.7"
           cache-disabled: true
 
-      - name: Pripravi Sumora projekt
+      - name: Pripravi preverjeni Sumora projekt
         run: |
-          cat deliva-build-v05/safe.part-* > /tmp/deliva-v05.b64
-          test "$(wc -c < /tmp/deliva-v05.b64)" = "44552"
-          base64 --decode /tmp/deliva-v05.b64 > /tmp/Deliva_v0.5_source.zip
-          echo "0b47cee785e6f6760eb059db473810ccd1b76499d2902ddc60eab7dc1775c59c  /tmp/Deliva_v0.5_source.zip" | sha256sum -c -
-          unzip -t /tmp/Deliva_v0.5_source.zip
-          unzip -q /tmp/Deliva_v0.5_source.zip -d .
-          base64 --decode sumora-build-v06/sumora_v06.patch.gz.b64 > /tmp/sumora.patch.gz
-          gunzip -c /tmp/sumora.patch.gz > /tmp/sumora.patch
-          cd deliva_v05_src
-          git apply /tmp/sumora.patch
-          grep -F "versionCode 6" app/build.gradle
-          grep -F "versionName '0.6.0'" app/build.gradle
-          grep -F "Sumora v0.6" app/src/main/java/si/deliva/app/MainActivity.java
-          rm -rf app/build build .gradle
+          cat sumora-build-v06/source.part-* > /tmp/sumora-v06.b64
+          test "$(wc -c < /tmp/sumora-v06.b64)" = "46556"
+          base64 --decode /tmp/sumora-v06.b64 > /tmp/Sumora_v0.6_source.zip
+          echo "7a3e38250de39ac0b03daf6e0dafb6899e1c7ed41d69625a4638667ce859adb8  /tmp/Sumora_v0.6_source.zip" | sha256sum -c -
+          unzip -t /tmp/Sumora_v0.6_source.zip
+          unzip -q /tmp/Sumora_v0.6_source.zip -d .
+          grep -F "versionCode 6" sumora_v06_src/app/build.gradle
+          grep -F "versionName '0.6.0'" sumora_v06_src/app/build.gradle
+          grep -F "Sumora v0.6" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          rm -rf sumora_v06_src/app/build sumora_v06_src/build sumora_v06_src/.gradle
 
       - name: Izdelaj nepodpisan release APK
-        working-directory: deliva_v05_src
+        working-directory: sumora_v06_src
         run: gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
 
       - name: Preveri vsebino in različico APK
         run: |
-          APK="deliva_v05_src/app/build/outputs/apk/release/app-release-unsigned.apk"
+          APK="sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk"
           test -f "$APK"
           test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")" = "si.deliva.app"
           test "$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")" = "6"
@@ -71,13 +67,13 @@ jobs:
 
       - name: Poravnaj APK in pripravi podpisovalnik
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 deliva_v05_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Sumora-v0.6-unsigned-aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Sumora-v0.6-unsigned-aligned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/apksigner.jar
 
       - name: Shrani gradbene datoteke
         uses: actions/upload-artifact@v4
         with:
-          name: Sumora-v0.6-build-fixed
+          name: Sumora-v0.6-build-corrected
           path: |
             /tmp/Sumora-v0.6-unsigned-aligned.apk
             /tmp/apksigner.jar
