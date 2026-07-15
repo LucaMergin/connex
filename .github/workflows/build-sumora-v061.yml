@@ -53,9 +53,13 @@ jobs:
           base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 > /tmp/sumora-v061.patch.gz
           gzip -t /tmp/sumora-v061.patch.gz
           gunzip -c /tmp/sumora-v061.patch.gz > /tmp/sumora-v061.patch
-          cd sumora_v06_src
-          git apply --check /tmp/sumora-v061.patch
-          git apply /tmp/sumora-v061.patch
+          git apply --check --directory=sumora_v06_src /tmp/sumora-v061.patch
+          git apply --directory=sumora_v06_src /tmp/sumora-v061.patch
+          grep -F "versionCode 7" sumora_v06_src/app/build.gradle
+          grep -F "versionName '0.6.1'" sumora_v06_src/app/build.gradle
+          grep -F "Sumora v0.6.1" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "SUMORA_SUPABASE_URL=" sumora_v06_src/gradle.properties
+          grep -F "SUMORA_SUPABASE_PUBLISHABLE_KEY=" sumora_v06_src/gradle.properties
 
       - name: Očisti projekt pred gradnjo
         run: |
