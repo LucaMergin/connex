@@ -1,0 +1,65 @@
+name: Diagnose Sumora v0.6.9 apply
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - ".github/workflows/diagnose-v069-apply.yml"
+      - "sumora-build-v069/**"
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct v0.6.8
+        run: |
+          set -euo pipefail
+          cat sumora-build-v06/source.part-* | base64 --decode > /tmp/base.zip
+          unzip -q /tmp/base.zip -d .
+          base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 | gunzip > /tmp/p61
+          git apply --directory=sumora_v06_src /tmp/p61
+          base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 | gunzip > /tmp/p62
+          git apply --directory=sumora_v06_src /tmp/p62
+          cat sumora-build-v063/verified-patch.part-* | base64 --decode | gunzip > /tmp/p63
+          git apply --directory=sumora_v06_src /tmp/p63
+          tr -d '\r\n' < sumora-build-v064/sumora_v064.patch.gz.b64 | base64 --decode | gunzip > /tmp/p64
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p64
+          tr -d '\r\n' < sumora-build-v065/sumora_v065.patch.gz.b64 | base64 --decode | gunzip > /tmp/p65
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p65
+          tr -d '\r\n' < sumora-build-v066/sumora_v066.patch.gz.b64 | base64 --decode | gunzip > /tmp/p66
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p66
+          cat sumora-build-v067/patch.part-* | tr -d '\r\n' | base64 --decode | gunzip > /tmp/p67
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p67
+          cat sumora-build-v068-plain/diff.part-* > /tmp/p68
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p68
+          (cd sumora_v06_src && zip -qr /tmp/reconstructed-v068.zip .)
+      - name: Assemble v0.6.9 patch
+        run: |
+          set -euo pipefail
+          cat sumora-build-v069/patch.part-00 sumora-build-v069/patch.part-01 sumora-build-v069/patch.part-02 > /tmp/v069.b64
+          cat sumora-build-v069/patch.hex-* | tr -d '\r\n' | xxd -r -p >> /tmp/v069.b64
+          base64 --decode /tmp/v069.b64 > /tmp/v069.patch.gz
+          gunzip -c /tmp/v069.patch.gz > /tmp/v069.patch
+          sha256sum /tmp/v069.patch.gz > /tmp/patch-sha.txt
+          wc -c /tmp/v069.b64 /tmp/v069.patch.gz /tmp/v069.patch > /tmp/sizes.txt
+      - name: Diagnose apply
+        run: |
+          set +e
+          patch --dry-run --verbose -p1 -d sumora_v06_src < /tmp/v069.patch > /tmp/apply.log 2>&1
+          echo $? > /tmp/apply-exit.txt
+          find sumora_v06_src -name '*.rej' -o -name '*.orig' > /tmp/reject-files.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-v069-apply
+          path: |
+            /tmp/reconstructed-v068.zip
+            /tmp/v069.patch
+            /tmp/v069.patch.gz
+            /tmp/apply.log
+            /tmp/apply-exit.txt
+            /tmp/patch-sha.txt
+            /tmp/sizes.txt
+            /tmp/reject-files.txt
