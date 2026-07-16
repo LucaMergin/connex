@@ -1,0 +1,154 @@
+diff --git a/app/build.gradle b/app/build.gradle
+index ad117b1..ccebfa0 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -6,8 +6,8 @@ android {
+         applicationId 'si.deliva.app'
+         minSdk 26
+         targetSdk 35
+-        versionCode 13
+-        versionName '0.6.7'
++        versionCode 14
++        versionName '0.6.8'
+         def sumoraUrl = (project.findProperty('SUMORA_SUPABASE_URL') ?: System.getenv('SUMORA_SUPABASE_URL') ?: '').toString()
+         def sumoraKey = (project.findProperty('SUMORA_SUPABASE_PUBLISHABLE_KEY') ?: System.getenv('SUMORA_SUPABASE_PUBLISHABLE_KEY') ?: '').toString()
+         buildConfigField 'String', 'SUPABASE_URL', '"' + sumoraUrl + '"'
+diff --git a/app/src/main/java/si/deliva/app/MainActivity.java b/app/src/main/java/si/deliva/app/MainActivity.java
+index 6e1b33f..9fbb454 100644
+--- a/app/src/main/java/si/deliva/app/MainActivity.java
++++ b/app/src/main/java/si/deliva/app/MainActivity.java
+@@ -37,9 +37,12 @@ import org.json.JSONArray;
+ import org.json.JSONObject;
+ 
+ import java.io.BufferedReader;
++import java.io.InputStream;
+ import java.io.InputStreamReader;
++import java.io.OutputStream;
+ import java.net.HttpURLConnection;
+ import java.net.URL;
++import java.nio.charset.StandardCharsets;
+ import java.text.NumberFormat;
+ import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+@@ -47,8 +50,11 @@ import java.util.Calendar;
+ import java.util.Collections;
+ import java.util.Comparator;
+ import java.util.Date;
++import java.util.HashMap;
++import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Locale;
++import java.util.Map;
+ import java.util.UUID;
+ 
+ public class MainActivity extends Activity {
+@@ -60,6 +66,17 @@ public class MainActivity extends Activity {
+     private static final String KEY_SETUP = "setup_done";
+     private static final String KEY_LAST_UPDATE_CHECK = "last_update_check";
+     private static final String KEY_IMPORT_PREFIX = "cloud_import_approved_";
++    private static final String KEY_ONBOARDING_DONE = "onboarding_done_v068";
++    private static final String KEY_LAST_BACKUP_EXPORT = "last_backup_export";
++    private static final String KEY_RESTORE_SAFETY_EXPENSES = "restore_safety_expenses";
++    private static final String KEY_RESTORE_SAFETY_SETTLEMENTS = "restore_safety_settlements";
++    private static final String KEY_RESTORE_SAFETY_NAME_A = "restore_safety_name_a";
++    private static final String KEY_RESTORE_SAFETY_NAME_B = "restore_safety_name_b";
++    private static final String KEY_RESTORE_SAFETY_AT = "restore_safety_at";
++    private static final int REQ_EXPORT_JSON = 6801;
++    private static final int REQ_EXPORT_CSV_MONTH = 6802;
++    private static final int REQ_EXPORT_CSV_ALL = 6803;
++    private static final int REQ_IMPORT_JSON = 6804;
+     private static final String UPDATE_URL = "https://raw.githubusercontent.com/LucaMergin/connex/deliva-updates/deliva/latest.json";
+     private static final long UPDATE_CHECK_INTERVAL = 12L * 60L * 60L * 1000L;
+ 
+@@ -112,8 +129,11 @@ public class MainActivity extends Activity {
+         normalizeSelectedMonth();
+         showHome();
+         new Handler().postDelayed(() -> probeConnection(false), 650L);
+-        if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_SETUP, false)) {
+-            new Handler().postDelayed(() -> showSettings(true), 350);
++        boolean onboardingDone = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ONBOARDING_DONE, false);
++        if (!onboardingDone) {
++            new Handler().postDelayed(() -> showOnboarding(true), 350L);
++        } else if (!getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_SETUP, false)) {
++            new Handler().postDelayed(() -> showSettings(true), 350L);
+         }
+         new Handler().postDelayed(() -> updateManager.check(false), 2200);
+     }
+@@ -347,9 +367,16 @@ public class MainActivity extends Activity {
+         middle.addView(cloud);
+         bar.addView(middle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+ 
++        TextView help = iconButton("?", "Pomoč in navodila");
++        help.setTextSize(20);
++        help.setOnClickListener(v -> showHelpCenter());
++        bar.addView(help, new LinearLayout.LayoutParams(dp(42), dp(44)));
++
+         TextView overview = iconButton("▥", "Mesečni pregled");
+         overview.setOnClickListener(v -> showOverview());
+-        bar.addView(overview, new LinearLayout.LayoutParams(dp(44), dp(44)));
++        LinearLayout.LayoutParams overviewParams = new LinearLayout.LayoutParams(dp(42), dp(44));
++        overviewParams.setMargins(dp(3), 0, 0, 0);
++        bar.addView(overview, overviewParams);
+ 
+         TextView settings = iconButton("⚙", "Nastavitve");
+         settings.setTextSize(23);
+@@ -1090,6 +1117,842 @@ public class MainActivity extends Activity {
+                 }).show();
+     }
+ 
++
++    private void showOnboarding(boolean firstUse) {
++        final String[] icons = {"⌂", "+", "±", "☁"};
++        final String[] titles = {
++                "Dobrodošel/a v Sumori",
++                "Dodaj prvi strošek",
++                "Razumi svoje stanje",
++                "Varno na obeh telefonih"
++        };
++        final String[] descriptions = {
++                "Sumora pomaga dvema osebama preprosto beležiti skupne stroške. Ustvari skupni račun ali se pridruži s povabilno kodo.",
++                "Vnesi znesek, kategorijo, plačnika in način delitve. Sumora sproti izračuna, kdo je plačal več.",
++                "Zeleni plus pomeni, da partner dolguje tebi. Rdeči minus pomeni, da ti dolguješ partnerju. Pri ničli sta poravnana.",
++                "Spremembe ostanejo na telefonu tudi brez interneta. Center sinhronizacije pokaže, kaj čaka na prenos in ali je vse usklajeno."
++        };
++
++        LinearLayout content = form();
++        content.setGravity(Gravity.CENTER_HORIZONTAL);
++
++        TextView stepLabel = text("", 11, BRAND, Typeface.BOLD);
++        stepLabel.setGravity(Gravity.CENTER);
++        stepLabel.setPadding(dp(12), dp(6), dp(12), dp(6));
++        stepLabel.setBackground(round(BRAND_SOFT, 20));
++        content.addView(stepLabel);
++
++        TextView icon = text("", 38, Color.WHITE, Typeface.BOLD);
++        icon.setGravity(Gravity.CENTER);
++        icon.setBackground(round(BRAND, 24));
++        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(82), dp(82));
++        iconParams.setMargins(0, dp(22), 0, 0);
++        content.addView(icon, iconParams);
++
++        TextView title = text("", 22, DARK, Typeface.BOLD);
++        title.setGravity(Gravity.CENTER);
++        title.setPadding(0, dp(20), 0, 0);
++        content.addView(title);
++
++        TextView description = text("", 14, MUTED, Typeface.NORMAL);
++        description.setGravity(Gravity.CENTER);
++        description.setPadding(dp(4), dp(10), dp(4), dp(8));
++        content.addView(description);
++
++        LinearLayout dots = new LinearLayout(this);
++        dots.setGravity(Gravity.CENTER);
++        dots.setPadding(0, dp(12), 0, 0);
++        content.addView(dots);
++
++        final int[] step = {0};
++        AlertDialog dialog = new AlertDialog.Builder(this)
++                .setView(content)
++                .setNegativeButton("Preskoči", (d, which) -> completeOnboarding(firstUse))
++                .setPositiveButton("Naprej", null)
++                .create();
++
++        dialog.setOnShowListener(d -> {
++            Button next = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
