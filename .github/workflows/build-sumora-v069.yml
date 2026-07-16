@@ -68,7 +68,27 @@ jobs:
           echo "f090389cdf7317f0b49cf0f7b164def88e18d08700f51c7030e5657428560f1b  /tmp/v069.patch.gz" | sha256sum -c -
           gzip -t /tmp/v069.patch.gz
           gunzip -c /tmp/v069.patch.gz > /tmp/v069.patch
-          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v069.patch
+
+          # README se med rekonstruirano in končno osnovo razlikuje; aplikacijski del
+          # popravka je neodvisen, zato uporabimo vse od app/build.gradle naprej.
+          awk 'BEGIN{keep=0} /^diff --git a\/app\/build.gradle b\/app\/build.gradle/{keep=1} keep{print}' /tmp/v069.patch > /tmp/v069-app.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v069-app.patch
+
+          cp sumora-build-v069/templates/Money.java sumora_v06_src/app/src/main/java/si/deliva/app/Money.java
+          cp sumora-build-v069/templates/SecureStore.java sumora_v06_src/app/src/main/java/si/deliva/app/SecureStore.java
+          cp sumora-build-v069/templates/LocalDataStore.java sumora_v06_src/app/src/main/java/si/deliva/app/LocalDataStore.java
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('String refresh = getRefreshToken();', 'String refresh = prefs.getString(KEY_REFRESH, "");')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          awk '/-- ================================================================/{flag=1} flag{print}' \
+            sumora_v06_src/supabase/setup.sql \
+            > sumora_v06_src/supabase/stability_foundation_v0.6.9.sql
 
       - name: Preveri stabilnost v ozadju
         run: |
@@ -79,6 +99,7 @@ jobs:
           grep -F "final class Money" sumora_v06_src/app/src/main/java/si/deliva/app/Money.java
           grep -F "final class SecureStore" sumora_v06_src/app/src/main/java/si/deliva/app/SecureStore.java
           grep -F "final class LocalDataStore" sumora_v06_src/app/src/main/java/si/deliva/app/LocalDataStore.java
+          grep -F 'String refresh = prefs.getString(KEY_REFRESH, "");' sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
           grep -F "nextClientVersion" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
           grep -F "fetchAllHouseholdRows" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
           grep -F "buildUndoCollection" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
@@ -125,10 +146,11 @@ jobs:
           grep -Fq "$KEY_VALUE" /tmp/classes.strings
           printf 'application_id=%s\nversion_code=%s\nversion_name=%s\n' "$APP_ID" "$VERSION_CODE" "$VERSION_NAME" > /tmp/Sumora-v0.6.9-manifest.txt
 
-      - name: Poravnaj APK
+      - name: Poravnaj APK in pripravi izvorno kodo
         run: |
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Sumora-v0.6.9-unsigned-aligned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/apksigner.jar
+          (cd sumora_v06_src && zip -qr /tmp/Sumora-v0.6.9-source.zip . -x 'app/build/*' '.gradle/*' 'build/*')
 
       - name: Shrani gradbene datoteke
         uses: actions/upload-artifact@v4
@@ -138,5 +160,6 @@ jobs:
             /tmp/Sumora-v0.6.9-unsigned-aligned.apk
             /tmp/apksigner.jar
             /tmp/Sumora-v0.6.9-manifest.txt
+            /tmp/Sumora-v0.6.9-source.zip
             sumora_v06_src/supabase/stability_foundation_v0.6.9.sql
           if-no-files-found: error
