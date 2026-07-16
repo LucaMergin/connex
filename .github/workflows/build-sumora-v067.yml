@@ -1,0 +1,168 @@
+name: Build Sumora v0.6.7 APK
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "sumora-build-v067/**"
+      - ".github/workflows/build-sumora-v067.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Prevzem kode
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Android 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+          cache-disabled: true
+
+      - name: Obnovi projekt do v0.6.6
+        run: |
+          set -euxo pipefail
+          cat sumora-build-v06/source.part-* > /tmp/sumora-v06.b64
+          test "$(wc -c < /tmp/sumora-v06.b64)" = "46556"
+          base64 --decode /tmp/sumora-v06.b64 > /tmp/Sumora_v0.6_source.zip
+          echo "7a3e38250de39ac0b03daf6e0dafb6899e1c7ed41d69625a4638667ce859adb8  /tmp/Sumora_v0.6_source.zip" | sha256sum -c -
+          unzip -t /tmp/Sumora_v0.6_source.zip
+          unzip -q /tmp/Sumora_v0.6_source.zip -d .
+
+          base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 | gunzip > /tmp/v061.patch
+          git apply --check --directory=sumora_v06_src /tmp/v061.patch
+          git apply --directory=sumora_v06_src /tmp/v061.patch
+
+          base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 | gunzip > /tmp/v062.patch
+          git apply --check --directory=sumora_v06_src /tmp/v062.patch
+          git apply --directory=sumora_v06_src /tmp/v062.patch
+
+          cat sumora-build-v063/verified-patch.part-* > /tmp/v063.b64
+          test "$(wc -c < /tmp/v063.b64)" = "10508"
+          base64 --decode /tmp/v063.b64 > /tmp/v063.patch.gz
+          echo "511f4bb7fdc902fc3b866aa2efe1fa189b7bf80d51f7ebfb01d18cd8a914acbb  /tmp/v063.patch.gz" | sha256sum -c -
+          gzip -t /tmp/v063.patch.gz
+          gunzip -c /tmp/v063.patch.gz > /tmp/v063.patch
+          git apply --check --directory=sumora_v06_src /tmp/v063.patch
+          git apply --directory=sumora_v06_src /tmp/v063.patch
+
+          tr -d '\r\n' < sumora-build-v064/sumora_v064.patch.gz.b64 > /tmp/v064.b64
+          test "$(wc -c < /tmp/v064.b64)" = "4040"
+          base64 --decode /tmp/v064.b64 > /tmp/v064.patch.gz
+          echo "aec5fc251f3ba99f8679f6f31eed0868e0d8f004141d921a3fc1d481b9be8e43  /tmp/v064.patch.gz" | sha256sum -c -
+          gzip -t /tmp/v064.patch.gz
+          gunzip -c /tmp/v064.patch.gz > /tmp/v064.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v064.patch
+
+          tr -d '\r\n' < sumora-build-v065/sumora_v065.patch.gz.b64 > /tmp/v065.b64
+          test "$(wc -c < /tmp/v065.b64)" = "5396"
+          base64 --decode /tmp/v065.b64 > /tmp/v065.patch.gz
+          echo "13a25319cae26c1572ee85d9ae57350fa85a08644be12f6ac3cfbf0337585420  /tmp/v065.patch.gz" | sha256sum -c -
+          gzip -t /tmp/v065.patch.gz
+          gunzip -c /tmp/v065.patch.gz > /tmp/v065.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v065.patch
+
+          tr -d '\r\n' < sumora-build-v066/sumora_v066.patch.gz.b64 > /tmp/v066.b64
+          test "$(wc -c < /tmp/v066.b64)" = "4136"
+          base64 --decode /tmp/v066.b64 > /tmp/v066.patch.gz
+          echo "1f99b6e53278664c628b617be1c8db97def2c1f07d1ed96098c9ac091b3e91b0  /tmp/v066.patch.gz" | sha256sum -c -
+          gzip -t /tmp/v066.patch.gz
+          gunzip -c /tmp/v066.patch.gz > /tmp/v066.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v066.patch
+
+      - name: Uporabi popravek v0.6.7
+        run: |
+          set -euxo pipefail
+          tr -d '\r\n' < sumora-build-v067/sumora_v067.patch.gz.b64 > /tmp/v067.b64
+          test "$(wc -c < /tmp/v067.b64)" = "10728"
+          base64 --decode /tmp/v067.b64 > /tmp/v067.patch.gz
+          echo "f18e9bbd5b4049d231d20d8b119616a4acc0ef11552fa9bf9aaf1100c964a6f4  /tmp/v067.patch.gz" | sha256sum -c -
+          gzip -t /tmp/v067.patch.gz
+          gunzip -c /tmp/v067.patch.gz > /tmp/v067.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v067.patch
+
+      - name: Preveri Reliability funkcije
+        run: |
+          set -euxo pipefail
+          grep -F "versionCode 13" sumora_v06_src/app/build.gradle
+          grep -F "versionName '0.6.7'" sumora_v06_src/app/build.gradle
+          grep -F "private boolean normalizeReliabilityState()" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "private void showConnectedCloud()" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "private void resetErrorsToPending()" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "private JSONArray changesToUpload" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
+          grep -F "private JSONArray markSynced" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
+          grep -F "sumora_keep_newest_client_change" sumora_v06_src/supabase/sync_reliability_v0.6.7.sql
+          grep -F "expenses_keep_newest_client_change" sumora_v06_src/supabase/sync_reliability_v0.6.7.sql
+          grep -F "settlements_keep_newest_client_change" sumora_v06_src/supabase/sync_reliability_v0.6.7.sql
+          grep -F "SUMORA_SUPABASE_URL=" sumora_v06_src/gradle.properties
+          grep -F "SUMORA_SUPABASE_PUBLISHABLE_KEY=" sumora_v06_src/gradle.properties
+
+      - name: Zgradi release APK
+        working-directory: sumora_v06_src
+        run: |
+          rm -rf app/build build .gradle
+          gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
+
+      - name: Preveri končni APK
+        run: |
+          set -euxo pipefail
+          APK="sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+          APP_ID=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")
+          VERSION_CODE=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")
+          VERSION_NAME=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$APK")
+          test "$APP_ID" = "si.deliva.app"
+          test "$VERSION_CODE" = "13"
+          test "$VERSION_NAME" = "0.6.7"
+
+          : > /tmp/sumora-classes.strings
+          for DEX in $(unzip -Z1 "$APK" | grep '^classes.*\.dex$'); do
+            unzip -p "$APK" "$DEX" > "/tmp/$DEX"
+            strings "/tmp/$DEX" >> /tmp/sumora-classes.strings
+          done
+          grep -Fq "normalizeReliabilityState" /tmp/sumora-classes.strings
+          grep -Fq "changesToUpload" /tmp/sumora-classes.strings
+          grep -Fq "resetErrorsToPending" /tmp/sumora-classes.strings
+          grep -Fq "getRemoteRecordCount" /tmp/sumora-classes.strings
+          grep -Fq "cloud_import_approved_" /tmp/sumora-classes.strings
+
+          URL_VALUE=$(sed -n 's/^SUMORA_SUPABASE_URL=//p' sumora_v06_src/gradle.properties)
+          KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
+          test -n "$URL_VALUE"
+          test -n "$KEY_VALUE"
+          grep -Fq "$URL_VALUE" /tmp/sumora-classes.strings
+          grep -Fq "$KEY_VALUE" /tmp/sumora-classes.strings
+
+          printf 'application_id=%s\nversion_code=%s\nversion_name=%s\n' "$APP_ID" "$VERSION_CODE" "$VERSION_NAME" > /tmp/Sumora-v0.6.7-manifest.txt
+
+      - name: Poravnaj APK in pripravi podpisovalnik
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Sumora-v0.6.7-unsigned-aligned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/apksigner.jar
+
+      - name: Shrani gradbene datoteke
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sumora-v0.6.7-build
+          path: |
+            /tmp/Sumora-v0.6.7-unsigned-aligned.apk
+            /tmp/apksigner.jar
+            /tmp/Sumora-v0.6.7-manifest.txt
+            sumora_v06_src/supabase/sync_reliability_v0.6.7.sql
+          if-no-files-found: error
