@@ -1,0 +1,152 @@
++            toast("Izvoz ni uspel. Poskusi izbrati drugo mapo.");
++        }
++    }
++
++    private String readDocument(Uri uri) throws Exception {
++        StringBuilder result = new StringBuilder();
++        InputStream input = getContentResolver().openInputStream(uri);
++        if (input == null) throw new Exception("Datoteke ni mogoče odpreti.");
++        try (InputStream in = input;
++             BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
++            char[] buffer = new char[4096];
++            int read;
++            int total = 0;
++            while ((read = reader.read(buffer)) >= 0) {
++                total += read;
++                if (total > 10_000_000) throw new Exception("Varnostna kopija je prevelika.");
++                result.append(buffer, 0, read);
++            }
++        }
++        return result.toString();
++    }
++
++    private void inspectRestore(Uri uri) {
++        try {
++            JSONObject backup = new JSONObject(readDocument(uri));
++            RestorePlan plan = analyzeRestore(backup);
++            if (!plan.valid) {
++                toast(plan.error);
++                return;
++            }
++
++            StringBuilder message = new StringBuilder();
++            message.append("Najdenih zapisov: ").append(plan.total).append('\n');
++            message.append("Novih: ").append(plan.added).append('\n');
++            message.append("Posodobljenih: ").append(plan.updated).append('\n');
++            message.append("Že obstoječih: ").append(plan.unchanged);
++            if (plan.invalid > 0) message.append("\nNeveljavnih in preskočenih: ").append(plan.invalid);
++
++            String backupHousehold = backup.optString("householdId", "");
++            String currentHousehold = supabase == null ? "" : supabase.getHouseholdId();
++            boolean differentHousehold = !backupHousehold.isEmpty() && !currentHousehold.isEmpty()
++                    && !backupHousehold.equals(currentHousehold);
++            if (differentHousehold) {
++                message.append("\n\nPozor: kopija je iz drugega skupnega računa. Obnovljeni zapisi se bodo po potrditvi povezali s trenutno prijavljenim računom.");
++            }
++            message.append("\n\nPred obnovitvijo bo Sumora samodejno shranila trenutno lokalno stanje.");
++
++            new AlertDialog.Builder(this)
++                    .setTitle("Pregled obnovitve")
++                    .setMessage(message.toString())
++                    .setNegativeButton("Prekliči", null)
++                    .setPositiveButton("Obnovi", (d, w) -> applyRestore(backup))
++                    .show();
++        } catch (Exception e) {
++            toast("Izbrana datoteka ni veljavna Sumorina varnostna kopija.");
++        }
++    }
++
++    private RestorePlan analyzeRestore(JSONObject backup) {
++        RestorePlan plan = new RestorePlan();
++        if (!"sumora-backup".equals(backup.optString("format", ""))) {
++            plan.error = "Datoteka ni Sumorina varnostna kopija.";
++            return plan;
++        }
++        JSONArray incomingExpenses = backup.optJSONArray("expenses");
++        JSONArray incomingSettlements = backup.optJSONArray("settlements");
++        if (incomingExpenses == null || incomingSettlements == null) {
++            plan.error = "V kopiji manjkajo podatki.";
++            return plan;
++        }
++        plan.valid = true;
++        analyzeRestoreCollection(expenses, incomingExpenses, plan);
++        analyzeRestoreCollection(settlements, incomingSettlements, plan);
++        plan.total = plan.added + plan.updated + plan.unchanged + plan.invalid;
++        return plan;
++    }
++
++    private void analyzeRestoreCollection(JSONArray current, JSONArray incoming, RestorePlan plan) {
++        Map<String, Long> versions = new HashMap<>();
++        for (int i = 0; i < current.length(); i++) {
++            JSONObject item = current.optJSONObject(i);
++            if (item == null) continue;
++            versions.put(item.optString("id", ""), item.optLong("updatedAt", item.optLong("time", 0L)));
++        }
++        for (int i = 0; i < incoming.length(); i++) {
++            JSONObject item = incoming.optJSONObject(i);
++            if (item == null || item.optString("id", "").isEmpty()) {
++                plan.invalid++;
++                continue;
++            }
++            String id = item.optString("id");
++            long version = item.optLong("updatedAt", item.optLong("time", 0L));
++            Long currentVersion = versions.get(id);
++            if (currentVersion == null) plan.added++;
++            else if (version > currentVersion) plan.updated++;
++            else plan.unchanged++;
++        }
++    }
++
++    private void applyRestore(JSONObject backup) {
++        try {
++            saveRestoreSafetyCopy();
++            expenses = mergeBackupCollection(expenses, backup.getJSONArray("expenses"));
++            settlements = mergeBackupCollection(settlements, backup.getJSONArray("settlements"));
++            String backupNameA = backup.optString("nameA", "").trim();
++            String backupNameB = backup.optString("nameB", "").trim();
++            if (!backupNameA.isEmpty()) nameA = backupNameA;
++            if (!backupNameB.isEmpty()) nameB = backupNameB;
++            save();
++            toast("Varnostna kopija je obnovljena.");
++            showHome();
++            syncWithServer(false);
++        } catch (Exception e) {
++            toast("Obnovitev ni uspela. Lokalni podatki niso bili spremenjeni.");
++        }
++    }
++
++    private JSONArray mergeBackupCollection(JSONArray current, JSONArray incoming) throws Exception {
++        Map<String, JSONObject> merged = new LinkedHashMap<>();
++        for (int i = 0; i < current.length(); i++) {
++            JSONObject item = current.optJSONObject(i);
++            if (item != null && !item.optString("id", "").isEmpty()) {
++                merged.put(item.optString("id"), new JSONObject(item.toString()));
++            }
++        }
++        for (int i = 0; i < incoming.length(); i++) {
++            JSONObject item = incoming.optJSONObject(i);
++            if (item == null || item.optString("id", "").isEmpty()) continue;
++            String id = item.optString("id");
++            JSONObject existing = merged.get(id);
++            long incomingVersion = item.optLong("updatedAt", item.optLong("time", 0L));
++            long existingVersion = existing == null ? Long.MIN_VALUE
++                    : existing.optLong("updatedAt", existing.optLong("time", 0L));
++            if (existing == null || incomingVersion > existingVersion) {
++                JSONObject copy = new JSONObject(item.toString());
++                copy.put("syncState", "pending");
++                copy.put("syncError", "");
++                if (!copy.has("updatedBy")) copy.put("updatedBy", supabase == null ? "" : supabase.getUserId());
++                merged.put(id, copy);
++            }
++        }
++        JSONArray result = new JSONArray();
++        for (JSONObject item : merged.values()) result.put(item);
++        return result;
++    }
++
++    private void saveRestoreSafetyCopy() {
++        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
++                .putString(KEY_RESTORE_SAFETY_EXPENSES, expenses.toString())
++                .putString(KEY_RESTORE_SAFETY_SETTLEMENTS, settlements.toString())
++                .putString(KEY_RESTORE_SAFETY_NAME_A, nameA)
++                .putString(KEY_RESTORE_SAFETY_NAME_B, nameB)
