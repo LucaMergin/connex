@@ -89,7 +89,7 @@ jobs:
       - name: Uporabi popravek v0.6.7
         run: |
           set -euxo pipefail
-          tr -d '\r\n' < sumora-build-v067/sumora_v067.patch.gz.b64 > /tmp/v067.b64
+          cat sumora-build-v067/patch.part-* | tr -d '\r\n' > /tmp/v067.b64
           test "$(wc -c < /tmp/v067.b64)" = "10728"
           base64 --decode /tmp/v067.b64 > /tmp/v067.patch.gz
           echo "f18e9bbd5b4049d231d20d8b119616a4acc0ef11552fa9bf9aaf1100c964a6f4  /tmp/v067.patch.gz" | sha256sum -c -
