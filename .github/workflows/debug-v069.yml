@@ -1,0 +1,25 @@
+name: Check v069 patch
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "sumora-build-v069/**"
+      - ".github/workflows/debug-v069.yml"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cat sumora-build-v069/patch.part-00 sumora-build-v069/patch.part-01 sumora-build-v069/patch.part-02 > /tmp/v069.b64
+          cat sumora-build-v069/patch.hex-* | tr -d '\r\n' | xxd -r -p >> /tmp/v069.b64
+          sed -i 's/KAItAq1wd/KAItAt1wd/' /tmp/v069.b64
+          wc -c /tmp/v069.b64
+          base64 --decode /tmp/v069.b64 > /tmp/v069.patch.gz
+          sha256sum /tmp/v069.patch.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v069-patch-check
+          path: |
+            /tmp/v069.b64
+            /tmp/v069.patch.gz
