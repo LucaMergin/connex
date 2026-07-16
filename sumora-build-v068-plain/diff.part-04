@@ -1,0 +1,162 @@
++                .putLong(KEY_RESTORE_SAFETY_AT, System.currentTimeMillis())
++                .apply();
++    }
++
++    private void confirmUndoRestore() {
++        long time = getSharedPreferences(PREFS, MODE_PRIVATE).getLong(KEY_RESTORE_SAFETY_AT, 0L);
++        if (time == 0L) {
++            toast("Ni shranjene obnovitve za razveljavitev.");
++            return;
++        }
++        new AlertDialog.Builder(this)
++                .setTitle("Razveljavim zadnjo obnovitev?")
++                .setMessage("Povrnjeno bo lokalno stanje pred obnovitvijo z dne " + fullDateTime(time) + ".")
++                .setNegativeButton("Ne", null)
++                .setPositiveButton("Razveljavi", (d, w) -> undoRestore())
++                .show();
++    }
++
++    private void undoRestore() {
++        try {
++            android.content.SharedPreferences p = getSharedPreferences(PREFS, MODE_PRIVATE);
++            expenses = new JSONArray(p.getString(KEY_RESTORE_SAFETY_EXPENSES, "[]"));
++            settlements = new JSONArray(p.getString(KEY_RESTORE_SAFETY_SETTLEMENTS, "[]"));
++            nameA = p.getString(KEY_RESTORE_SAFETY_NAME_A, nameA);
++            nameB = p.getString(KEY_RESTORE_SAFETY_NAME_B, nameB);
++            markCollectionPending(expenses);
++            markCollectionPending(settlements);
++            save();
++            p.edit().remove(KEY_RESTORE_SAFETY_EXPENSES)
++                    .remove(KEY_RESTORE_SAFETY_SETTLEMENTS)
++                    .remove(KEY_RESTORE_SAFETY_NAME_A)
++                    .remove(KEY_RESTORE_SAFETY_NAME_B)
++                    .remove(KEY_RESTORE_SAFETY_AT)
++                    .apply();
++            toast("Prejšnje lokalno stanje je povrnjeno.");
++            showHome();
++            syncWithServer(false);
++        } catch (Exception e) {
++            toast("Razveljavitev ni uspela.");
++        }
++    }
++
++    private void markCollectionPending(JSONArray collection) {
++        for (int i = 0; i < collection.length(); i++) {
++            JSONObject item = collection.optJSONObject(i);
++            if (item == null) continue;
++            try {
++                item.put("syncState", "pending");
++                item.put("syncError", "");
++            } catch (Exception ignored) { }
++        }
++    }
++
++    private String fullDateTime(long time) {
++        return new SimpleDateFormat("dd.MM.yyyy 'ob' HH:mm", new Locale("sl", "SI")).format(new Date(time));
++    }
++
++    @Override
++    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
++        super.onActivityResult(requestCode, resultCode, data);
++        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
++        Uri uri = data.getData();
++        if (requestCode == REQ_EXPORT_JSON) {
++            try {
++                writeDocument(uri, buildBackupJson().toString(2));
++            } catch (Exception e) {
++                toast("Varnostne kopije ni bilo mogoče pripraviti.");
++            }
++        } else if (requestCode == REQ_EXPORT_CSV_MONTH) {
++            writeDocument(uri, buildCsv(false));
++        } else if (requestCode == REQ_EXPORT_CSV_ALL) {
++            writeDocument(uri, buildCsv(true));
++        } else if (requestCode == REQ_IMPORT_JSON) {
++            inspectRestore(uri);
++        }
++    }
++
++    private void showMembersPanel() {
++        if (supabase == null || !supabase.isReady()) {
++            showCloudPanel();
++            return;
++        }
++        toast("Nalagam člane …");
++        supabase.getHouseholdMembers((ok, message, members) -> {
++            if (!ok) {
++                toast(message);
++                return;
++            }
++            renderMembersPanel(members);
++        });
++    }
++
++    private void renderMembersPanel(JSONArray members) {
++        LinearLayout form = form();
++
++        LinearLayout householdCard = card();
++        householdCard.addView(text(supabase.getHouseholdName(), 19, DARK, Typeface.BOLD));
++        TextView role = text(supabase.isOwner() ? "Lastnik skupnega računa" : "Član skupnega računa", 12, MUTED, Typeface.NORMAL);
++        role.setPadding(0, dp(5), 0, 0);
++        householdCard.addView(role);
++        TextView invite = text("Povabilna koda  " + supabase.getInviteCode(), 14, BRAND, Typeface.BOLD);
++        invite.setPadding(dp(12), dp(10), dp(12), dp(10));
++        invite.setBackground(round(BRAND_SOFT, 12));
++        LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
++        ip.setMargins(0, dp(12), 0, 0);
++        householdCard.addView(invite, ip);
++        form.addView(householdCard);
++
++        TextView heading = text("Člani", 16, DARK, Typeface.BOLD);
++        heading.setPadding(0, dp(16), 0, dp(2));
++        form.addView(heading);
++
++        String otherUserId = "";
++        String otherName = "drugo osebo";
++        for (int i = 0; i < members.length(); i++) {
++            JSONObject member = members.optJSONObject(i);
++            if (member == null) continue;
++            form.addView(memberCard(member), dialogMargin());
++            if (!member.optBoolean("is_me", false)) {
++                otherUserId = member.optString("user_id", "");
++                otherName = member.optString("display_name", "drugo osebo");
++            }
++        }
++
++        Button copy = secondary("Kopiraj povabilno kodo");
++        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        cp.setMargins(0, dp(14), 0, 0);
++        form.addView(copy, cp);
++
++        Button rename = secondary("Preimenuj skupni račun");
++        rename.setEnabled(supabase.isOwner());
++        LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        np.setMargins(0, dp(8), 0, 0);
++        form.addView(rename, np);
++
++        Button regenerate = secondary("Ustvari novo povabilno kodo");
++        regenerate.setEnabled(supabase.isOwner());
++        LinearLayout.LayoutParams rgp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        rgp.setMargins(0, dp(8), 0, 0);
++        form.addView(regenerate, rgp);
++
++        final String targetUserId = otherUserId;
++        final String targetName = otherName;
++        if (supabase.isOwner() && !targetUserId.isEmpty()) {
++            Button transfer = secondary("Prenesi lastništvo na " + targetName);
++            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++            tp.setMargins(0, dp(14), 0, 0);
++            form.addView(transfer, tp);
++            transfer.setOnClickListener(v -> confirmTransferOwnership(targetUserId, targetName));
++
++            Button remove = secondary("Odstrani " + targetName);
++            remove.setTextColor(RED);
++            LinearLayout.LayoutParams rmp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++            rmp.setMargins(0, dp(8), 0, 0);
++            form.addView(remove, rmp);
++            remove.setOnClickListener(v -> confirmRemoveMember(targetUserId, targetName));
++        }
++
++        Button leave = secondary(supabase.isOwner() ? "Zapusti ali izbriši skupni račun" : "Zapusti skupni račun");
++        leave.setTextColor(RED);
++        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        lp.setMargins(0, dp(14), 0, 0);
