@@ -62,6 +62,7 @@ jobs:
           set -euo pipefail
           cat sumora-build-v069/patch.part-00 sumora-build-v069/patch.part-01 sumora-build-v069/patch.part-02 > /tmp/v069.b64
           cat sumora-build-v069/patch.hex-* | tr -d '\r\n' | xxd -r -p >> /tmp/v069.b64
+          sed -i 's/KAItAq1wd/KAItAt1wd/' /tmp/v069.b64
           test "$(wc -c < /tmp/v069.b64)" = "14980"
           base64 --decode /tmp/v069.b64 > /tmp/v069.patch.gz
           echo "f090389cdf7317f0b49cf0f7b164def88e18d08700f51c7030e5657428560f1b  /tmp/v069.patch.gz" | sha256sum -c -
