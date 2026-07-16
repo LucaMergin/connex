@@ -1,0 +1,198 @@
++    raise exception 'Samo lastnik lahko ustvari novo povabilno kodo.';
++  end if;
++
++  for v_attempt in 1..8 loop
++    v_code := public.generate_deliva_code();
++    begin
++      update public.households
++      set invite_code = v_code, updated_at = now()
++      where id = v_household_id;
++      return jsonb_build_object('invite_code', v_code);
++    exception when unique_violation then
++      -- Poskusi z novo kodo.
++    end;
++  end loop;
++
++  raise exception 'Nove povabilne kode trenutno ni bilo mogoče ustvariti.';
++end;
++$$;
++
++create or replace function public.remove_household_member(p_user_id uuid)
++returns jsonb
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_household_id uuid;
++  v_target_slot smallint;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select hm.household_id into v_household_id
++  from public.household_members hm
++  where hm.user_id = auth.uid() and hm.role = 'owner'
++  limit 1;
++
++  if v_household_id is null then
++    raise exception 'Samo lastnik lahko odstrani člana.';
++  end if;
++
++  if p_user_id = auth.uid() then
++    raise exception 'Samega sebe ni mogoče odstraniti. Uporabi možnost za izbris ali zapustitev računa.';
++  end if;
++
++  select hm.slot into v_target_slot
++  from public.household_members hm
++  where hm.household_id = v_household_id and hm.user_id = p_user_id;
++
++  if v_target_slot is null then
++    raise exception 'Izbrani član ne obstaja.';
++  end if;
++
++  delete from public.household_members
++  where household_id = v_household_id and user_id = p_user_id;
++
++  if v_target_slot = 1 then
++    update public.households
++    set person_b_name = 'Partner/ka', updated_at = now()
++    where id = v_household_id;
++  end if;
++
++  return jsonb_build_object('removed', true);
++end;
++$$;
++
++create or replace function public.transfer_household_ownership(p_user_id uuid)
++returns jsonb
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_household_id uuid;
++  v_target_exists boolean;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select hm.household_id into v_household_id
++  from public.household_members hm
++  where hm.user_id = auth.uid() and hm.role = 'owner'
++  limit 1;
++
++  if v_household_id is null then
++    raise exception 'Samo lastnik lahko prenese lastništvo.';
++  end if;
++
++  select exists(
++    select 1 from public.household_members hm
++    where hm.household_id = v_household_id and hm.user_id = p_user_id
++  ) into v_target_exists;
++
++  if not v_target_exists or p_user_id = auth.uid() then
++    raise exception 'Izbrani član ni veljaven.';
++  end if;
++
++  update public.household_members
++  set role = case when user_id = p_user_id then 'owner' else 'member' end
++  where household_id = v_household_id;
++
++  return jsonb_build_object('transferred', true);
++end;
++$$;
++
++create or replace function public.leave_my_household()
++returns jsonb
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_membership public.household_members;
++  v_member_count integer;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select * into v_membership
++  from public.household_members hm
++  where hm.user_id = auth.uid()
++  limit 1;
++
++  if v_membership.household_id is null then
++    raise exception 'Skupni račun še ni povezan.';
++  end if;
++
++  select count(*) into v_member_count
++  from public.household_members hm
++  where hm.household_id = v_membership.household_id;
++
++  if v_membership.role = 'owner' then
++    if v_member_count > 1 then
++      raise exception 'Najprej prenesi lastništvo ali odstrani drugega člana.';
++    end if;
++    delete from public.households where id = v_membership.household_id;
++    return jsonb_build_object('deleted', true);
++  end if;
++
++  delete from public.household_members
++  where household_id = v_membership.household_id and user_id = auth.uid();
++
++  if v_membership.slot = 1 then
++    update public.households
++    set person_b_name = 'Partner/ka', updated_at = now()
++    where id = v_membership.household_id;
++  end if;
++
++  return jsonb_build_object('left', true);
++end;
++$$;
++
++create or replace function public.delete_my_household()
++returns jsonb
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_household_id uuid;
++  v_member_count integer;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select hm.household_id into v_household_id
++  from public.household_members hm
++  where hm.user_id = auth.uid() and hm.role = 'owner'
++  limit 1;
++
++  if v_household_id is null then
++    raise exception 'Samo lastnik lahko izbriše skupni račun.';
++  end if;
++
++  select count(*) into v_member_count
++  from public.household_members hm
++  where hm.household_id = v_household_id;
++
++  if v_member_count > 1 then
++    raise exception 'Pred izbrisom odstrani drugega člana ali prenesi lastništvo.';
++  end if;
++
++  delete from public.households where id = v_household_id;
++  return jsonb_build_object('deleted', true);
++end;
++$$;
++
++grant execute on function public.get_household_members() to authenticated;
++grant execute on function public.rename_my_household(text) to authenticated;
++grant execute on function public.regenerate_household_invite() to authenticated;
++grant execute on function public.remove_household_member(uuid) to authenticated;
++grant execute on function public.transfer_household_ownership(uuid) to authenticated;
++grant execute on function public.leave_my_household() to authenticated;
++grant execute on function public.delete_my_household() to authenticated;
