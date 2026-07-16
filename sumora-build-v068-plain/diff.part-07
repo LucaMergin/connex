@@ -1,0 +1,211 @@
++                ensureSession();
++                JSONObject body = new JSONObject();
++                body.put("p_user_id", userId);
++                Response response = request("POST", "/rest/v1/rpc/remove_household_member", body.toString(), true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                deliver(callback, true, "Član je odstranjen iz skupnega računa.");
++            } catch (Exception e) {
++                deliver(callback, false, friendly(e));
++            }
++        });
++    }
++
++    public void transferHouseholdOwnership(String userId, Callback callback) {
++        runAsync(() -> {
++            try {
++                ensureSession();
++                JSONObject body = new JSONObject();
++                body.put("p_user_id", userId);
++                Response response = request("POST", "/rest/v1/rpc/transfer_household_ownership", body.toString(), true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                loadMembershipSync();
++                deliver(callback, true, "Lastništvo je uspešno preneseno.");
++            } catch (Exception e) {
++                deliver(callback, false, friendly(e));
++            }
++        });
++    }
++
++    public void leaveHousehold(Callback callback) {
++        runAsync(() -> {
++            try {
++                ensureSession();
++                Response response = request("POST", "/rest/v1/rpc/leave_my_household", "{}", true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                clearHouseholdLink();
++                deliver(callback, true, "Skupni račun si zapustil/a.");
++            } catch (Exception e) {
++                deliver(callback, false, friendly(e));
++            }
++        });
++    }
++
++    public void deleteHousehold(Callback callback) {
++        runAsync(() -> {
++            try {
++                ensureSession();
++                Response response = request("POST", "/rest/v1/rpc/delete_my_household", "{}", true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                clearHouseholdLink();
++                deliver(callback, true, "Skupni račun je izbrisan.");
++            } catch (Exception e) {
++                deliver(callback, false, friendly(e));
++            }
++        });
++    }
++
++    private void clearHouseholdLink() {
++        prefs.edit()
++                .remove(KEY_HOUSEHOLD)
++                .remove(KEY_HOUSEHOLD_NAME)
++                .remove(KEY_INVITE)
++                .remove(KEY_SLOT)
++                .remove(KEY_ROLE)
++                .remove(KEY_LAST_SYNC)
++                .remove(KEY_REMOTE_EXPENSES)
++                .remove(KEY_REMOTE_SETTLEMENTS)
++                .apply();
++    }
++
+     private boolean loadMembershipSync() throws Exception {
+         if (getUserId().isEmpty()) return false;
+         String path = "/rest/v1/household_members?select=household_id,slot,role,households(id,name,invite_code,person_a_name,person_b_name)&user_id=eq."
+@@ -313,6 +448,7 @@ public class SupabaseManager {
+                 .putInt(KEY_SLOT, row.optInt("slot", -1))
+                 .putString(KEY_HOUSEHOLD_NAME, household.optString("name", "Sumora"))
+                 .putString(KEY_INVITE, household.optString("invite_code", ""))
++                .putString(KEY_ROLE, row.optString("role", "member"))
+                 .apply();
+         return true;
+     }
+@@ -323,6 +459,7 @@ public class SupabaseManager {
+                 .putString(KEY_HOUSEHOLD_NAME, result.optString("name", "Sumora"))
+                 .putString(KEY_INVITE, result.optString("invite_code", ""))
+                 .putInt(KEY_SLOT, result.optInt("slot", -1))
++                .putString(KEY_ROLE, result.optString("role", result.optInt("slot", -1) == 0 ? "owner" : "member"))
+                 .apply();
+     }
+ 
+@@ -714,6 +851,10 @@ public class SupabaseManager {
+         activity.runOnUiThread(() -> callback.onResult(success, message, expenses, settlements, nameA, nameB));
+     }
+ 
++    private void deliverMembers(MembersCallback callback, boolean success, String message, JSONArray members) {
++        activity.runOnUiThread(() -> callback.onResult(success, message, members));
++    }
++
+     private static String read(InputStream input) throws Exception {
+         if (input == null) return "";
+         try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+diff --git a/supabase/setup.sql b/supabase/setup.sql
+index 4688498..8a61ef4 100644
+--- a/supabase/setup.sql
++++ b/supabase/setup.sql
+@@ -322,3 +322,305 @@ drop trigger if exists settlements_keep_newest_client_change on public.settlemen
+ create trigger settlements_keep_newest_client_change
+ before update on public.settlements
+ for each row execute function public.sumora_keep_newest_client_change();
++
++-- SUMORA v0.6.8 – upravljanje skupnega računa in članov
++-- Zaženi enkrat v Supabase SQL Editorju pred objavo APK-ja.
++
++create or replace function public.get_household_members()
++returns jsonb
++language plpgsql
++stable
++security definer
++set search_path = public
++as $$
++declare
++  v_household_id uuid;
++  v_result jsonb;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select hm.household_id into v_household_id
++  from public.household_members hm
++  where hm.user_id = auth.uid()
++  limit 1;
++
++  if v_household_id is null then
++    raise exception 'Skupni račun še ni povezan.';
++  end if;
++
++  select coalesce(
++    jsonb_agg(
++      jsonb_build_object(
++        'user_id', hm.user_id,
++        'slot', hm.slot,
++        'role', hm.role,
++        'joined_at', hm.joined_at,
++        'display_name', case when hm.slot = 0 then h.person_a_name else h.person_b_name end,
++        'is_me', hm.user_id = auth.uid()
++      )
++      order by hm.slot
++    ),
++    '[]'::jsonb
++  )
++  into v_result
++  from public.household_members hm
++  join public.households h on h.id = hm.household_id
++  where hm.household_id = v_household_id;
++
++  return v_result;
++end;
++$$;
++
++create or replace function public.rename_my_household(p_name text)
++returns jsonb
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_household_id uuid;
++  v_name text;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select hm.household_id into v_household_id
++  from public.household_members hm
++  where hm.user_id = auth.uid() and hm.role = 'owner'
++  limit 1;
++
++  if v_household_id is null then
++    raise exception 'Samo lastnik lahko spremeni ime skupnega računa.';
++  end if;
++
++  v_name := coalesce(nullif(trim(p_name), ''), 'Najini stroški');
++  update public.households
++  set name = v_name, updated_at = now()
++  where id = v_household_id;
++
++  return jsonb_build_object('name', v_name);
++end;
++$$;
++
++create or replace function public.regenerate_household_invite()
++returns jsonb
++language plpgsql
++security definer
++set search_path = public
++as $$
++declare
++  v_household_id uuid;
++  v_code text;
++  v_attempt integer;
++begin
++  if auth.uid() is null then
++    raise exception 'Prijava je obvezna.';
++  end if;
++
++  select hm.household_id into v_household_id
++  from public.household_members hm
++  where hm.user_id = auth.uid() and hm.role = 'owner'
++  limit 1;
++
++  if v_household_id is null then
