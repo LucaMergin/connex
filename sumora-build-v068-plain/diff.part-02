@@ -1,0 +1,161 @@
++        Button allCsv = secondary("Izvozi vse obdobje v CSV");
++        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        ap.setMargins(0, dp(8), 0, 0);
++        form.addView(allCsv, ap);
++
++        Button restore = secondary("Obnovi iz JSON-kopije");
++        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        rp.setMargins(0, dp(14), 0, 0);
++        form.addView(restore, rp);
++
++        boolean canUndo = getSharedPreferences(PREFS, MODE_PRIVATE).getLong(KEY_RESTORE_SAFETY_AT, 0L) > 0L;
++        Button undo = secondary("Razveljavi zadnjo obnovitev");
++        undo.setEnabled(canUndo);
++        LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        up.setMargins(0, dp(8), 0, 0);
++        form.addView(undo, up);
++
++        ScrollView scroll = new ScrollView(this);
++        scroll.addView(form);
++        AlertDialog dialog = new AlertDialog.Builder(this)
++                .setTitle("Varnostna kopija in izvoz")
++                .setView(scroll)
++                .setPositiveButton("Zapri", null)
++                .create();
++
++        json.setOnClickListener(v -> {
++            dialog.dismiss();
++            launchCreateDocument(REQ_EXPORT_JSON, "application/json", backupFileName());
++        });
++        monthCsv.setOnClickListener(v -> {
++            dialog.dismiss();
++            launchCreateDocument(REQ_EXPORT_CSV_MONTH, "text/csv", csvFileName(false));
++        });
++        allCsv.setOnClickListener(v -> {
++            dialog.dismiss();
++            launchCreateDocument(REQ_EXPORT_CSV_ALL, "text/csv", csvFileName(true));
++        });
++        restore.setOnClickListener(v -> {
++            dialog.dismiss();
++            launchRestoreDocument();
++        });
++        undo.setOnClickListener(v -> {
++            dialog.dismiss();
++            confirmUndoRestore();
++        });
++        dialog.show();
++    }
++
++    private void launchCreateDocument(int requestCode, String mimeType, String fileName) {
++        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
++        intent.addCategory(Intent.CATEGORY_OPENABLE);
++        intent.setType(mimeType);
++        intent.putExtra(Intent.EXTRA_TITLE, fileName);
++        startActivityForResult(intent, requestCode);
++    }
++
++    private void launchRestoreDocument() {
++        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
++        intent.addCategory(Intent.CATEGORY_OPENABLE);
++        intent.setType("application/json");
++        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
++        startActivityForResult(intent, REQ_IMPORT_JSON);
++    }
++
++    private String backupFileName() {
++        return "Sumora_backup_" + new SimpleDateFormat("yyyyMMdd_HHmm", Locale.ROOT).format(new Date()) + ".json";
++    }
++
++    private String csvFileName(boolean all) {
++        String suffix = all
++                ? "vse"
++                : new SimpleDateFormat("yyyy_MM", Locale.ROOT).format(selectedMonth.getTime());
++        return "Sumora_stroski_" + suffix + ".csv";
++    }
++
++    private JSONObject buildBackupJson() throws Exception {
++        JSONObject root = new JSONObject();
++        root.put("format", "sumora-backup");
++        root.put("schemaVersion", 1);
++        root.put("appVersion", BuildConfig.VERSION_NAME);
++        root.put("exportedAt", System.currentTimeMillis());
++        root.put("householdId", supabase == null ? "" : supabase.getHouseholdId());
++        root.put("householdName", supabase == null ? "" : supabase.getHouseholdName());
++        root.put("nameA", nameA);
++        root.put("nameB", nameB);
++        root.put("expenses", new JSONArray(expenses.toString()));
++        root.put("settlements", new JSONArray(settlements.toString()));
++        return root;
++    }
++
++    private String buildCsv(boolean all) {
++        StringBuilder csv = new StringBuilder();
++        csv.append('\ufeff');
++        csv.append("Vrsta;Datum;Opis;Kategorija;Plačnik;Znesek;Delež prve osebe;Delež druge osebe;ID\n");
++
++        for (int i = 0; i < expenses.length(); i++) {
++            JSONObject e = expenses.optJSONObject(i);
++            if (e == null || e.optBoolean("deleted", false)) continue;
++            long time = e.optLong("time", 0L);
++            if (!all && !isInSelectedMonth(time)) continue;
++            double amount = e.optDouble("amount", 0);
++            double shareA = e.optDouble("shareA", amount / 2.0);
++            String payer = e.optInt("payer", 0) == 0 ? nameA : nameB;
++            csv.append(csvCell("Strošek")).append(';')
++                    .append(csvCell(date(time))).append(';')
++                    .append(csvCell(e.optString("title", "Strošek"))).append(';')
++                    .append(csvCell(e.optString("category", "Drugo"))).append(';')
++                    .append(csvCell(payer)).append(';')
++                    .append(csvNumber(amount)).append(';')
++                    .append(csvNumber(shareA)).append(';')
++                    .append(csvNumber(amount - shareA)).append(';')
++                    .append(csvCell(e.optString("id", ""))).append('\n');
++        }
++
++        for (int i = 0; i < settlements.length(); i++) {
++            JSONObject s = settlements.optJSONObject(i);
++            if (s == null || s.optBoolean("deleted", false)) continue;
++            long time = s.optLong("time", 0L);
++            if (!all && !isInSelectedMonth(time)) continue;
++            int from = s.optInt("from", 0);
++            String fromName = from == 0 ? nameA : nameB;
++            String toName = from == 0 ? nameB : nameA;
++            csv.append(csvCell("Poravnava")).append(';')
++                    .append(csvCell(date(time))).append(';')
++                    .append(csvCell(fromName + " → " + toName)).append(';')
++                    .append(csvCell("Poravnava")).append(';')
++                    .append(csvCell(fromName)).append(';')
++                    .append(csvNumber(s.optDouble("amount", 0))).append(';')
++                    .append(csvCell("")).append(';')
++                    .append(csvCell("")).append(';')
++                    .append(csvCell(s.optString("id", ""))).append('\n');
++        }
++        return csv.toString();
++    }
++
++    private boolean isInSelectedMonth(long time) {
++        Calendar c = Calendar.getInstance();
++        c.setTimeInMillis(time);
++        return c.get(Calendar.YEAR) == selectedMonth.get(Calendar.YEAR)
++                && c.get(Calendar.MONTH) == selectedMonth.get(Calendar.MONTH);
++    }
++
++    private String csvCell(String value) {
++        String clean = value == null ? "" : value.replace("\"", "\"\"");
++        return "\"" + clean + "\"";
++    }
++
++    private String csvNumber(double value) {
++        return String.format(new Locale("sl", "SI"), "%.2f", value);
++    }
++
++    private void writeDocument(Uri uri, String content) {
++        try (OutputStream out = getContentResolver().openOutputStream(uri, "w")) {
++            if (out == null) throw new Exception("Datoteke ni mogoče odpreti.");
++            out.write(content.getBytes(StandardCharsets.UTF_8));
++            out.flush();
++            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
++                    .putLong(KEY_LAST_BACKUP_EXPORT, System.currentTimeMillis())
++                    .apply();
++            toast("Datoteka je varno shranjena.");
++        } catch (Exception e) {
