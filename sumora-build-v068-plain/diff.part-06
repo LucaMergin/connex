@@ -1,0 +1,171 @@
++                    expenses = new JSONArray();
++                    settlements = new JSONArray();
++                    save();
++                    showHome();
++                })
++                .setPositiveButton("Obdrži lokalno", (d, w) -> showHome())
++                .setCancelable(false)
++                .show();
++    }
++
+     private void showSettings(boolean firstRun) {
+         LinearLayout form = form();
+         EditText a = input(nameA);
+@@ -1116,6 +1979,27 @@ public class MainActivity extends Activity {
+         form.addView(cloud, cloudParams);
+         cloud.setOnClickListener(v -> showCloudPanel());
+ 
++        Button members = secondary("Skupni račun in člani");
++        LinearLayout.LayoutParams memberParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        memberParams.setMargins(0, dp(8), 0, 0);
++        form.addView(members, memberParams);
++        members.setOnClickListener(v -> {
++            if (supabase != null && supabase.isReady()) showMembersPanel();
++            else showCloudPanel();
++        });
++
++        Button backup = secondary("Varnostna kopija in izvoz");
++        LinearLayout.LayoutParams backupParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        backupParams.setMargins(0, dp(8), 0, 0);
++        form.addView(backup, backupParams);
++        backup.setOnClickListener(v -> showBackupPanel());
++
++        Button help = secondary("Pomoč in navodila");
++        LinearLayout.LayoutParams helpParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        helpParams.setMargins(0, dp(8), 0, 0);
++        form.addView(help, helpParams);
++        help.setOnClickListener(v -> showHelpCenter());
++
+         Button update = secondary("Preveri in prenesi posodobitve");
+         LinearLayout.LayoutParams updateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+         updateParams.setMargins(0, dp(12), 0, 0);
+@@ -2097,7 +2981,7 @@ public class MainActivity extends Activity {
+     }
+ 
+     private String appVersionLabel() {
+-        return "Sumora v" + BuildConfig.VERSION_NAME + "  •  Sync Center & Reliability";
++        return "Sumora v" + BuildConfig.VERSION_NAME + "  •  Help, Backup & Members";
+     }
+ 
+     private TextView footer() {
+@@ -2321,6 +3205,16 @@ public class MainActivity extends Activity {
+         }
+     }
+ 
++    private static class RestorePlan {
++        boolean valid;
++        String error = "Varnostna kopija ni veljavna.";
++        int total;
++        int added;
++        int updated;
++        int unchanged;
++        int invalid;
++    }
++
+     private static class MonthStats {
+         double total;
+         double paidA;
+diff --git a/app/src/main/java/si/deliva/app/SupabaseManager.java b/app/src/main/java/si/deliva/app/SupabaseManager.java
+index aa9dd0a..4a3b897 100644
+--- a/app/src/main/java/si/deliva/app/SupabaseManager.java
++++ b/app/src/main/java/si/deliva/app/SupabaseManager.java
+@@ -34,6 +34,7 @@ public class SupabaseManager {
+     private static final String KEY_HOUSEHOLD_NAME = "household_name";
+     private static final String KEY_INVITE = "invite_code";
+     private static final String KEY_SLOT = "member_slot";
++    private static final String KEY_ROLE = "member_role";
+     private static final String KEY_LAST_SYNC = "last_sync";
+     private static final String KEY_LAST_CONTACT = "last_contact";
+     private static final String KEY_LAST_FAILURE = "last_failure";
+@@ -53,6 +54,10 @@ public class SupabaseManager {
+         void onResult(boolean success, String message, JSONArray expenses, JSONArray settlements, String nameA, String nameB);
+     }
+ 
++    public interface MembersCallback {
++        void onResult(boolean success, String message, JSONArray members);
++    }
++
+     public enum ConnectionState {
+         CONNECTED,
+         ATTENTION,
+@@ -123,6 +128,14 @@ public class SupabaseManager {
+         return prefs.getInt(KEY_SLOT, -1);
+     }
+ 
++    public String getMemberRole() {
++        return prefs.getString(KEY_ROLE, "");
++    }
++
++    public boolean isOwner() {
++        return "owner".equals(getMemberRole());
++    }
++
+     public long getLastSync() {
+         return prefs.getLong(KEY_LAST_SYNC, 0L);
+     }
+@@ -138,7 +151,7 @@ public class SupabaseManager {
+                 .remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_EXPIRES)
+                 .remove(KEY_USER).remove(KEY_EMAIL)
+                 .remove(KEY_HOUSEHOLD).remove(KEY_HOUSEHOLD_NAME)
+-                .remove(KEY_INVITE).remove(KEY_SLOT).apply();
++                .remove(KEY_INVITE).remove(KEY_SLOT).remove(KEY_ROLE).apply();
+     }
+ 
+     public ConnectionState getConnectionState() {
+@@ -297,6 +310,128 @@ public class SupabaseManager {
+         });
+     }
+ 
++
++    public void getHouseholdMembers(MembersCallback callback) {
++        runAsync(() -> {
++            try {
++                ensureSession();
++                if (!hasHousehold() && !loadMembershipSync()) throw new Exception("Skupni račun še ni povezan.");
++                Response response = request("POST", "/rest/v1/rpc/get_household_members", "{}", true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                JSONArray members = new JSONArray(response.body);
++                deliverMembers(callback, true, "Člani so osveženi.", members);
++            } catch (Exception e) {
++                deliverMembers(callback, false, friendly(e), new JSONArray());
++            }
++        });
++    }
++
++    public void renameHousehold(String name, Callback callback) {
++        runAsync(() -> {
++            try {
++                ensureSession();
++                JSONObject body = new JSONObject();
++                body.put("p_name", name == null ? "" : name.trim());
++                Response response = request("POST", "/rest/v1/rpc/rename_my_household", body.toString(), true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                JSONObject result = response.body.trim().isEmpty() ? new JSONObject() : new JSONObject(response.body);
++                String updatedName = result.optString("name", name == null ? "" : name.trim());
++                prefs.edit().putString(KEY_HOUSEHOLD_NAME, updatedName).apply();
++                deliver(callback, true, "Ime skupnega računa je posodobljeno.");
++            } catch (Exception e) {
++                deliver(callback, false, friendly(e));
++            }
++        });
++    }
++
++    public void regenerateInviteCode(Callback callback) {
++        runAsync(() -> {
++            try {
++                ensureSession();
++                Response response = request("POST", "/rest/v1/rpc/regenerate_household_invite", "{}", true, null);
++                if (!response.ok()) throw new Exception(errorMessage(response));
++                JSONObject result = response.body.trim().isEmpty() ? new JSONObject() : new JSONObject(response.body);
++                String code = result.optString("invite_code", "");
++                if (!code.isEmpty()) prefs.edit().putString(KEY_INVITE, code).apply();
++                deliver(callback, true, "Nova povabilna koda je pripravljena.");
++            } catch (Exception e) {
++                deliver(callback, false, friendly(e));
++            }
++        });
++    }
++
++    public void removeHouseholdMember(String userId, Callback callback) {
++        runAsync(() -> {
++            try {
