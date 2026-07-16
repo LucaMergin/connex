@@ -1,0 +1,141 @@
+name: Build Sumora v0.6.9 APK
+
+on:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "sumora-build-v069/**"
+      - ".github/workflows/build-sumora-v069.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Prevzem kode
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Android 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+          cache-disabled: true
+
+      - name: Obnovi projekt do v0.6.8
+        run: |
+          set -euo pipefail
+          cat sumora-build-v06/source.part-* | base64 --decode > /tmp/base.zip
+          unzip -q /tmp/base.zip -d .
+          base64 --decode sumora-build-v061/sumora_v061.patch.gz.b64 | gunzip > /tmp/p61
+          git apply --directory=sumora_v06_src /tmp/p61
+          base64 --decode sumora-build-v062/sumora_v062.patch.gz.b64 | gunzip > /tmp/p62
+          git apply --directory=sumora_v06_src /tmp/p62
+          cat sumora-build-v063/verified-patch.part-* | base64 --decode | gunzip > /tmp/p63
+          git apply --directory=sumora_v06_src /tmp/p63
+          tr -d '\r\n' < sumora-build-v064/sumora_v064.patch.gz.b64 | base64 --decode | gunzip > /tmp/p64
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p64
+          tr -d '\r\n' < sumora-build-v065/sumora_v065.patch.gz.b64 | base64 --decode | gunzip > /tmp/p65
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p65
+          tr -d '\r\n' < sumora-build-v066/sumora_v066.patch.gz.b64 | base64 --decode | gunzip > /tmp/p66
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p66
+          cat sumora-build-v067/patch.part-* | tr -d '\r\n' | base64 --decode | gunzip > /tmp/p67
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p67
+          cat sumora-build-v068-plain/diff.part-* > /tmp/p68
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/p68
+
+      - name: Uporabi popravek v0.6.9
+        run: |
+          set -euo pipefail
+          cat sumora-build-v069/patch.part-00 sumora-build-v069/patch.part-01 sumora-build-v069/patch.part-02 > /tmp/v069.b64
+          cat sumora-build-v069/patch.hex-* | tr -d '\r\n' | xxd -r -p >> /tmp/v069.b64
+          test "$(wc -c < /tmp/v069.b64)" = "14980"
+          base64 --decode /tmp/v069.b64 > /tmp/v069.patch.gz
+          echo "f090389cdf7317f0b49cf0f7b164def88e18d08700f51c7030e5657428560f1b  /tmp/v069.patch.gz" | sha256sum -c -
+          gzip -t /tmp/v069.patch.gz
+          gunzip -c /tmp/v069.patch.gz > /tmp/v069.patch
+          patch --batch --forward -p1 -d sumora_v06_src < /tmp/v069.patch
+
+      - name: Preveri stabilnost v ozadju
+        run: |
+          set -euo pipefail
+          grep -F "versionCode 15" sumora_v06_src/app/build.gradle
+          grep -F "versionName '0.6.9'" sumora_v06_src/app/build.gradle
+          grep -F 'android:allowBackup="false"' sumora_v06_src/app/src/main/AndroidManifest.xml
+          grep -F "final class Money" sumora_v06_src/app/src/main/java/si/deliva/app/Money.java
+          grep -F "final class SecureStore" sumora_v06_src/app/src/main/java/si/deliva/app/SecureStore.java
+          grep -F "final class LocalDataStore" sumora_v06_src/app/src/main/java/si/deliva/app/LocalDataStore.java
+          grep -F "nextClientVersion" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
+          grep -F "fetchAllHouseholdRows" sumora_v06_src/app/src/main/java/si/deliva/app/SupabaseManager.java
+          grep -F "buildUndoCollection" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "amountCents" sumora_v06_src/app/src/main/java/si/deliva/app/MainActivity.java
+          grep -F "invite_expires_at" sumora_v06_src/supabase/stability_foundation_v0.6.9.sql
+          grep -F "update_household_people" sumora_v06_src/supabase/stability_foundation_v0.6.9.sql
+          grep -F "SUMORA_SUPABASE_URL=" sumora_v06_src/gradle.properties
+          grep -F "SUMORA_SUPABASE_PUBLISHABLE_KEY=" sumora_v06_src/gradle.properties
+
+      - name: Zgradi release APK
+        working-directory: sumora_v06_src
+        run: |
+          rm -rf app/build build .gradle
+          gradle clean :app:assembleRelease --stacktrace --no-build-cache --rerun-tasks
+
+      - name: Preveri končni APK
+        run: |
+          set -euo pipefail
+          APK="sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+          APP_ID=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest application-id "$APK")
+          VERSION_CODE=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-code "$APK")
+          VERSION_NAME=$("$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest version-name "$APK")
+          test "$APP_ID" = "si.deliva.app"
+          test "$VERSION_CODE" = "15"
+          test "$VERSION_NAME" = "0.6.9"
+          : > /tmp/classes.strings
+          for DEX in $(unzip -Z1 "$APK" | grep '^classes.*\.dex$'); do
+            unzip -p "$APK" "$DEX" > "/tmp/$DEX"
+            strings "/tmp/$DEX" >> /tmp/classes.strings
+          done
+          grep -Fq "LocalDataStore" /tmp/classes.strings
+          grep -Fq "SecureStore" /tmp/classes.strings
+          grep -Fq "nextClientVersion" /tmp/classes.strings
+          grep -Fq "buildUndoCollection" /tmp/classes.strings
+          grep -Fq "fetchAllHouseholdRows" /tmp/classes.strings
+          grep -Fq "amountCents" /tmp/classes.strings
+          grep -Fq "cloud_import_approved_" /tmp/classes.strings
+          URL_VALUE=$(sed -n 's/^SUMORA_SUPABASE_URL=//p' sumora_v06_src/gradle.properties)
+          KEY_VALUE=$(sed -n 's/^SUMORA_SUPABASE_PUBLISHABLE_KEY=//p' sumora_v06_src/gradle.properties)
+          test -n "$URL_VALUE"
+          test -n "$KEY_VALUE"
+          grep -Fq "$URL_VALUE" /tmp/classes.strings
+          grep -Fq "$KEY_VALUE" /tmp/classes.strings
+          printf 'application_id=%s\nversion_code=%s\nversion_name=%s\n' "$APP_ID" "$VERSION_CODE" "$VERSION_NAME" > /tmp/Sumora-v0.6.9-manifest.txt
+
+      - name: Poravnaj APK
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 sumora_v06_src/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/Sumora-v0.6.9-unsigned-aligned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/apksigner.jar
+
+      - name: Shrani gradbene datoteke
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sumora-v0.6.9-build
+          path: |
+            /tmp/Sumora-v0.6.9-unsigned-aligned.apk
+            /tmp/apksigner.jar
+            /tmp/Sumora-v0.6.9-manifest.txt
+            sumora_v06_src/supabase/stability_foundation_v0.6.9.sql
+          if-no-files-found: error
