@@ -1,0 +1,140 @@
++            renderOnboardingStep(step[0], icons, titles, descriptions, stepLabel, icon, title, description, dots, next);
++            next.setOnClickListener(v -> {
++                if (step[0] >= titles.length - 1) {
++                    dialog.dismiss();
++                    completeOnboarding(firstUse);
++                    return;
++                }
++                step[0]++;
++                renderOnboardingStep(step[0], icons, titles, descriptions, stepLabel, icon, title, description, dots, next);
++            });
++        });
++        dialog.setCanceledOnTouchOutside(false);
++        dialog.show();
++    }
++
++    private void renderOnboardingStep(int step, String[] icons, String[] titles, String[] descriptions,
++                                      TextView stepLabel, TextView icon, TextView title, TextView description,
++                                      LinearLayout dots, Button next) {
++        stepLabel.setText("KORAK " + (step + 1) + " OD " + titles.length);
++        icon.setText(icons[step]);
++        title.setText(titles[step]);
++        description.setText(descriptions[step]);
++        next.setText(step == titles.length - 1 ? "Začni uporabljati" : "Naprej");
++
++        dots.removeAllViews();
++        for (int i = 0; i < titles.length; i++) {
++            View dot = new View(this);
++            dot.setBackground(round(i == step ? BRAND : Color.rgb(209, 213, 219), 6));
++            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(i == step ? dp(22) : dp(8), dp(8));
++            if (i > 0) p.setMargins(dp(7), 0, 0, 0);
++            dots.addView(dot, p);
++        }
++    }
++
++    private void completeOnboarding(boolean firstUse) {
++        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_ONBOARDING_DONE, true).apply();
++        if (firstUse && !getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_SETUP, false)) {
++            new Handler().postDelayed(() -> showSettings(true), 180L);
++        }
++    }
++
++    private void showHelpCenter() {
++        LinearLayout form = form();
++
++        LinearLayout intro = card();
++        intro.addView(text("?  Pomoč pri uporabi", 18, DARK, Typeface.BOLD));
++        TextView introText = text("Kratka navodila so vedno dosegljiva tukaj. Noben finančni ali prijavni podatek se ne pošilja zaradi prikaza pomoči.", 12, MUTED, Typeface.NORMAL);
++        introText.setPadding(0, dp(7), 0, 0);
++        intro.addView(introText);
++        form.addView(intro);
++
++        form.addView(helpCard("1", "Poveži skupni račun",
++                "V nastavitvah odpri »Račun in sinhronizacija«. Ena oseba ustvari račun in deli šestmestno kodo, druga pa jo vnese na svojem telefonu."), dialogMargin());
++        form.addView(helpCard("2", "Dodaj strošek",
++                "Vnesi opis, znesek, kategorijo in plačnika. Delitev lahko ostane enaka ali jo prilagodiš glede na dejanski dogovor."), dialogMargin());
++        form.addView(helpCard("±", "Zeleni plus in rdeči minus",
++                "Zeleni + pomeni, da partner dolguje tebi. Rdeči − pomeni, da ti dolguješ partnerju. Stanje je vedno prikazano iz perspektive prijavljenega uporabnika."), dialogMargin());
++        form.addView(helpCard("▥", "Pregledi in kategorije",
++                "Mesečni pregled pokaže skupno porabo, primerjavo mesecev in porabo po kategorijah. Pritisni kategorijo za seznam vseh pripadajočih stroškov."), dialogMargin());
++        form.addView(helpCard("☁", "Sinhronizacija",
++                "Rumeno stanje pomeni, da spremembe čakajo. Rdeče opozori na napako. Pritisni stanje povezave in uporabi »Sinhroniziraj zdaj« ali »Ponovi neuspele prenose«."), dialogMargin());
++        form.addView(helpCard("⇩", "Varnostna kopija",
++                "JSON vsebuje popolno kopijo za obnovitev. CSV je namenjen pregledu v Excelu. Pred obnovitvijo Sumora vedno pokaže, kaj bo dodano ali posodobljeno."), dialogMargin());
++        form.addView(helpCard("↑", "Posodobitve",
++                "Ko je različica na voljo, se pokaže profesionalen seznam novosti. APK se pred namestitvijo preveri s kontrolno vsoto SHA-256."), dialogMargin());
++
++        Button guide = primary("Ponovno zaženi uvodni vodič");
++        LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
++        gp.setMargins(0, dp(14), 0, 0);
++        form.addView(guide, gp);
++
++        ScrollView scroll = new ScrollView(this);
++        scroll.addView(form);
++        AlertDialog dialog = new AlertDialog.Builder(this)
++                .setTitle("Pomoč in navodila")
++                .setView(scroll)
++                .setPositiveButton("Zapri", null)
++                .create();
++        guide.setOnClickListener(v -> {
++            dialog.dismiss();
++            showOnboarding(false);
++        });
++        dialog.show();
++    }
++
++    private LinearLayout helpCard(String iconText, String titleText, String bodyText) {
++        LinearLayout card = card();
++        LinearLayout row = new LinearLayout(this);
++        row.setGravity(Gravity.TOP);
++
++        TextView icon = text(iconText, 17, BRAND, Typeface.BOLD);
++        icon.setGravity(Gravity.CENTER);
++        icon.setBackground(round(BRAND_SOFT, 13));
++        row.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
++
++        LinearLayout copy = new LinearLayout(this);
++        copy.setOrientation(LinearLayout.VERTICAL);
++        copy.setPadding(dp(12), 0, 0, 0);
++        copy.addView(text(titleText, 15, DARK, Typeface.BOLD));
++        TextView body = text(bodyText, 12, MUTED, Typeface.NORMAL);
++        body.setPadding(0, dp(5), 0, 0);
++        copy.addView(body);
++        row.addView(copy, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
++        card.addView(row);
++        return card;
++    }
++
++    private LinearLayout.LayoutParams dialogMargin() {
++        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
++        p.setMargins(0, dp(9), 0, 0);
++        return p;
++    }
++
++    private void showBackupPanel() {
++        LinearLayout form = form();
++
++        LinearLayout info = card();
++        info.addView(text("Varnost podatkov", 17, DARK, Typeface.BOLD));
++        long last = getSharedPreferences(PREFS, MODE_PRIVATE).getLong(KEY_LAST_BACKUP_EXPORT, 0L);
++        TextView status = text(last == 0L
++                        ? "Varnostna kopija na tem telefonu še ni bila izvožena."
++                        : "Zadnji izvoz: " + fullDateTime(last),
++                12, MUTED, Typeface.NORMAL);
++        status.setPadding(0, dp(6), 0, 0);
++        info.addView(status);
++        TextView hint = text("Popolna JSON-kopija vsebuje stroške, poravnave in imeni oseb. Gesla, prijavni žetoni in strežniški ključi niso vključeni.", 12, MUTED, Typeface.NORMAL);
++        hint.setPadding(0, dp(6), 0, 0);
++        info.addView(hint);
++        form.addView(info);
++
++        Button json = primary("Izvozi popolno JSON-kopijo");
++        LinearLayout.LayoutParams jp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
++        jp.setMargins(0, dp(12), 0, 0);
++        form.addView(json, jp);
++
++        Button monthCsv = secondary("Izvozi " + monthLabel(selectedMonth) + " v CSV");
++        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
++        mp.setMargins(0, dp(8), 0, 0);
++        form.addView(monthCsv, mp);
++
