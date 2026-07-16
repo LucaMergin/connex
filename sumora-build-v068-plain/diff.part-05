@@ -1,0 +1,155 @@
++        form.addView(leave, lp);
++
++        ScrollView scroll = new ScrollView(this);
++        scroll.addView(form);
++        AlertDialog dialog = new AlertDialog.Builder(this)
++                .setTitle("Skupni račun in člani")
++                .setView(scroll)
++                .setPositiveButton("Zapri", null)
++                .create();
++
++        copy.setOnClickListener(v -> {
++            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
++            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Sumora povabilna koda", supabase.getInviteCode()));
++            toast("Povabilna koda je kopirana.");
++        });
++        rename.setOnClickListener(v -> {
++            dialog.dismiss();
++            showRenameHousehold();
++        });
++        regenerate.setOnClickListener(v -> {
++            dialog.dismiss();
++            confirmRegenerateInvite();
++        });
++        leave.setOnClickListener(v -> {
++            dialog.dismiss();
++            confirmLeaveOrDeleteHousehold(members.length());
++        });
++        dialog.show();
++    }
++
++    private LinearLayout memberCard(JSONObject member) {
++        LinearLayout card = card();
++        LinearLayout row = new LinearLayout(this);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++
++        int slot = member.optInt("slot", -1);
++        TextView avatar = text(slot == 0 ? "A" : "B", 17, Color.WHITE, Typeface.BOLD);
++        avatar.setGravity(Gravity.CENTER);
++        avatar.setBackground(round(slot == 0 ? BRAND : Color.rgb(14, 116, 144), 14));
++        row.addView(avatar, new LinearLayout.LayoutParams(dp(42), dp(42)));
++
++        LinearLayout details = new LinearLayout(this);
++        details.setOrientation(LinearLayout.VERTICAL);
++        details.setPadding(dp(12), 0, 0, 0);
++        String display = member.optString("display_name", slot == 0 ? nameA : nameB);
++        if (member.optBoolean("is_me", false)) display += "  •  ti";
++        details.addView(text(display, 15, DARK, Typeface.BOLD));
++        String role = "owner".equals(member.optString("role")) ? "Lastnik" : "Član";
++        String joined = member.optString("joined_at", "");
++        if (joined.length() >= 10) joined = joined.substring(8, 10) + "." + joined.substring(5, 7) + "." + joined.substring(0, 4);
++        details.addView(text(role + (joined.isEmpty() ? "" : "  •  pridružen " + joined), 11, MUTED, Typeface.NORMAL));
++        row.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
++        card.addView(row);
++        return card;
++    }
++
++    private void showRenameHousehold() {
++        EditText input = input("Ime skupnega računa");
++        input.setText(supabase.getHouseholdName());
++        AlertDialog dialog = new AlertDialog.Builder(this)
++                .setTitle("Preimenuj skupni račun")
++                .setView(input)
++                .setNegativeButton("Prekliči", null)
++                .setPositiveButton("Shrani", null)
++                .create();
++        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
++            String value = input.getText().toString().trim();
++            if (value.length() < 2) {
++                toast("Vnesi veljavno ime.");
++                return;
++            }
++            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
++            supabase.renameHousehold(value, (ok, message) -> {
++                toast(message);
++                if (ok) {
++                    dialog.dismiss();
++                    showMembersPanel();
++                } else {
++                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
++                }
++            });
++        }));
++        dialog.show();
++    }
++
++    private void confirmRegenerateInvite() {
++        new AlertDialog.Builder(this)
++                .setTitle("Ustvarim novo povabilno kodo?")
++                .setMessage("Stara koda bo takoj prenehala delovati. Že povezani član ostane povezan.")
++                .setNegativeButton("Ne", null)
++                .setPositiveButton("Ustvari", (d, w) -> supabase.regenerateInviteCode((ok, message) -> {
++                    toast(message);
++                    if (ok) showMembersPanel();
++                }))
++                .show();
++    }
++
++    private void confirmRemoveMember(String userId, String displayName) {
++        new AlertDialog.Builder(this)
++                .setTitle("Odstranim člana?")
++                .setMessage(displayName + " ne bo več mogel/a dostopati do skupnega računa. Podatki, ki so že lokalno na njegovem telefonu, se ne izbrišejo samodejno.")
++                .setNegativeButton("Ne", null)
++                .setPositiveButton("Odstrani", (d, w) -> supabase.removeHouseholdMember(userId, (ok, message) -> {
++                    toast(message);
++                    if (ok) showMembersPanel();
++                }))
++                .show();
++    }
++
++    private void confirmTransferOwnership(String userId, String displayName) {
++        new AlertDialog.Builder(this)
++                .setTitle("Prenesem lastništvo?")
++                .setMessage(displayName + " bo postal/a lastnik skupnega računa. Ti boš ostal/a običajen član.")
++                .setNegativeButton("Ne", null)
++                .setPositiveButton("Prenesi", (d, w) -> supabase.transferHouseholdOwnership(userId, (ok, message) -> {
++                    toast(message);
++                    if (ok) showMembersPanel();
++                }))
++                .show();
++    }
++
++    private void confirmLeaveOrDeleteHousehold(int memberCount) {
++        if (supabase.isOwner() && memberCount > 1) {
++            new AlertDialog.Builder(this)
++                    .setTitle("Lastnik ne more takoj zapustiti računa")
++                    .setMessage("Najprej prenesi lastništvo na drugega člana ali ga odstrani.")
++                    .setPositiveButton("V redu", null)
++                    .show();
++            return;
++        }
++
++        String title = supabase.isOwner() ? "Izbrišem skupni račun?" : "Zapustim skupni račun?";
++        String message = supabase.isOwner()
++                ? "Ker si edini član, bo skupni račun izbrisan iz oblaka. Lokalni podatki bodo do tvoje odločitve ostali na telefonu."
++                : "Izgubil/a boš dostop do skupnih podatkov v oblaku. Lokalni podatki bodo do tvoje odločitve ostali na telefonu.";
++        new AlertDialog.Builder(this)
++                .setTitle(title)
++                .setMessage(message)
++                .setNegativeButton("Ne", null)
++                .setPositiveButton(supabase.isOwner() ? "Izbriši" : "Zapusti", (d, w) -> {
++                    SupabaseManager.Callback callback = (ok, resultMessage) -> {
++                        toast(resultMessage);
++                        if (ok) askKeepLocalAfterHouseholdExit();
++                    };
++                    if (supabase.isOwner()) supabase.deleteHousehold(callback);
++                    else supabase.leaveHousehold(callback);
++                })
++                .show();
++    }
++
++    private void askKeepLocalAfterHouseholdExit() {
++        new AlertDialog.Builder(this)
++                .setTitle("Kaj naj Sumora naredi z lokalnimi podatki?")
++                .setMessage("Lokalni stroški in poravnave so še vedno na tem telefonu.")
++                .setNegativeButton("Izbriši lokalno", (d, w) -> {
